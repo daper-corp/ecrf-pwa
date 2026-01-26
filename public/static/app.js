@@ -1,6 +1,6 @@
 // eCRF PWA - Frontend Application
 // 21 CFR Part 11 준수를 위한 클라이언트 사이드 로직
-// Version 2.0 - Full UI Implementation
+// Version 2.1 - Full UI + Offline Support
 
 (function() {
   'use strict';
@@ -28,6 +28,490 @@
     currentCRF: null,
     currentView: 'dashboard', // dashboard, study, site, subject, visit, crf
     lastActivity: Date.now(),
+    isOnline: navigator.onLine,
+    pendingChanges: 0,
+  };
+
+  // =====================================================
+  // OFFLINE SUPPORT
+  // =====================================================
+  const offline = {
+    // 오프라인 상태 변경 핸들러
+    init() {
+      window.addEventListener('online', () => this.handleOnlineStatusChange(true));
+      window.addEventListener('offline', () => this.handleOnlineStatusChange(false));
+      
+      // Service Worker 메시지 수신
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          this.handleServiceWorkerMessage(event.data);
+        });
+      }
+      
+      // OfflineDB 이벤트 수신
+      window.addEventListener('offline-status-change', (event) => {
+        this.handleOnlineStatusChange(event.detail.online);
+      });
+      
+      window.addEventListener('pending-changes-update', (event) => {
+        state.pendingChanges = event.detail.count;
+        this.updateOfflineUI();
+      });
+      
+      // 초기 상태 설정
+      state.isOnline = navigator.onLine;
+      this.updateOfflineUI();
+    },
+    
+    handleOnlineStatusChange(isOnline) {
+      state.isOnline = isOnline;
+      this.updateOfflineUI();
+      
+      if (isOnline) {
+        showToast('온라인 상태로 전환되었습니다.', 'success');
+        this.triggerSync();
+      } else {
+        showToast('오프라인 상태입니다. 변경사항은 로컬에 저장됩니다.', 'warning');
+      }
+    },
+    
+    handleServiceWorkerMessage(data) {
+      switch (data.type) {
+        case 'OFFLINE_MUTATION':
+          // 오프라인에서 저장 요청
+          this.saveOfflineChange(data);
+          break;
+        case 'SYNC_STARTED':
+          showToast('데이터 동기화 중...', 'info');
+          break;
+        case 'TRIGGER_SYNC':
+          if (window.eCRFOfflineDB) {
+            window.eCRFOfflineDB.syncWithServer();
+          }
+          break;
+      }
+    },
+    
+    async saveOfflineChange(data) {
+      if (window.eCRFOfflineDB) {
+        const type = this.getChangeType(data.endpoint);
+        await window.eCRFOfflineDB.savePendingChange(
+          type,
+          data.endpoint,
+          data.method,
+          data.body
+        );
+        showToast('변경사항이 로컬에 저장되었습니다.', 'info');
+      }
+    },
+    
+    getChangeType(endpoint) {
+      if (endpoint.includes('/crf')) return 'CRF_DATA';
+      if (endpoint.includes('/queries')) return 'QUERY';
+      if (endpoint.includes('/signatures')) return 'SIGNATURE';
+      return 'OTHER';
+    },
+    
+    async triggerSync() {
+      if (window.eCRFOfflineDB) {
+        const result = await window.eCRFOfflineDB.syncWithServer();
+        if (result.synced > 0) {
+          showToast(`${result.synced}개의 변경사항이 동기화되었습니다.`, 'success');
+        }
+        if (result.failed > 0) {
+          showToast(`${result.failed}개의 동기화에 실패했습니다.`, 'error');
+        }
+      }
+    },
+    
+    updateOfflineUI() {
+      const statusIndicator = document.getElementById('offline-status');
+      if (!statusIndicator) {
+        this.createOfflineIndicator();
+        return;
+      }
+      
+      if (state.isOnline) {
+        statusIndicator.classList.add('hidden');
+      } else {
+        statusIndicator.classList.remove('hidden');
+      }
+      
+      // 대기 중인 변경사항 표시
+      const pendingBadge = document.getElementById('pending-changes-badge');
+      if (pendingBadge) {
+        if (state.pendingChanges > 0) {
+          pendingBadge.textContent = state.pendingChanges;
+          pendingBadge.classList.remove('hidden');
+        } else {
+          pendingBadge.classList.add('hidden');
+        }
+      }
+    },
+    
+    createOfflineIndicator() {
+      const indicator = document.createElement('div');
+      indicator.id = 'offline-status';
+      indicator.className = 'fixed bottom-4 left-4 bg-yellow-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center space-x-2 z-50 hidden cursor-pointer';
+      indicator.innerHTML = `
+        <i class="fas fa-wifi-slash"></i>
+        <span>오프라인</span>
+        <span id="pending-changes-badge" class="bg-white text-yellow-600 px-2 py-0.5 rounded-full text-xs font-bold hidden">0</span>
+      `;
+      indicator.onclick = () => this.showSyncDashboard();
+      document.body.appendChild(indicator);
+      this.updateOfflineUI();
+    },
+
+    // 동기화 대시보드 표시
+    async showSyncDashboard() {
+      if (!window.eCRFOfflineDB) {
+        showToast('오프라인 데이터베이스가 초기화되지 않았습니다.', 'error');
+        return;
+      }
+
+      try {
+        const status = await window.eCRFOfflineDB.getSyncStatus();
+        const cacheStats = await window.eCRFOfflineDB.getCacheStats();
+
+        const modal = document.createElement('div');
+        modal.id = 'sync-dashboard-modal';
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]';
+        modal.innerHTML = `
+          <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden">
+            <div class="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between">
+              <h2 class="text-xl font-bold text-white flex items-center">
+                <i class="fas fa-sync-alt mr-3"></i>
+                동기화 상태
+              </h2>
+              <button onclick="document.getElementById('sync-dashboard-modal').remove()" class="text-white hover:text-gray-200">
+                <i class="fas fa-times text-xl"></i>
+              </button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+              <!-- 연결 상태 -->
+              <div class="flex items-center justify-between mb-6 p-4 rounded-lg ${status.isOnline ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}">
+                <div class="flex items-center">
+                  <i class="fas ${status.isOnline ? 'fa-wifi text-green-500' : 'fa-wifi-slash text-yellow-500'} text-2xl mr-3"></i>
+                  <div>
+                    <p class="font-semibold ${status.isOnline ? 'text-green-700' : 'text-yellow-700'}">
+                      ${status.isOnline ? '온라인' : '오프라인'}
+                    </p>
+                    <p class="text-sm text-gray-500">
+                      마지막 동기화: ${status.lastSyncTime ? new Date(status.lastSyncTime).toLocaleString('ko-KR') : '없음'}
+                    </p>
+                  </div>
+                </div>
+                ${status.isOnline && status.pending > 0 ? `
+                  <button onclick="offline.manualSync()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center">
+                    <i class="fas fa-sync-alt mr-2"></i>지금 동기화
+                  </button>
+                ` : ''}
+              </div>
+
+              <!-- 통계 카드 -->
+              <div class="grid grid-cols-3 gap-4 mb-6">
+                <div class="bg-blue-50 p-4 rounded-lg text-center">
+                  <p class="text-3xl font-bold text-blue-600">${status.pending}</p>
+                  <p class="text-sm text-gray-600">대기중</p>
+                </div>
+                <div class="bg-red-50 p-4 rounded-lg text-center">
+                  <p class="text-3xl font-bold text-red-600">${status.conflicts}</p>
+                  <p class="text-sm text-gray-600">충돌</p>
+                </div>
+                <div class="bg-yellow-50 p-4 rounded-lg text-center">
+                  <p class="text-3xl font-bold text-yellow-600">${status.failed}</p>
+                  <p class="text-sm text-gray-600">실패</p>
+                </div>
+              </div>
+
+              <!-- 충돌 목록 -->
+              ${status.conflicts > 0 ? `
+                <div class="mb-6">
+                  <h3 class="font-semibold text-gray-700 mb-3 flex items-center">
+                    <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>
+                    충돌 항목 (${status.conflicts}개)
+                  </h3>
+                  <div class="space-y-2">
+                    ${status.conflictDetails.map(c => `
+                      <div class="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200">
+                        <div>
+                          <p class="font-medium text-red-700">${c.type}</p>
+                          <p class="text-xs text-gray-500">${c.endpoint}</p>
+                        </div>
+                        <button onclick="offline.showConflictResolver(${c.id})" class="text-red-600 hover:text-red-800 text-sm">
+                          해결하기 <i class="fas fa-chevron-right ml-1"></i>
+                        </button>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+
+              <!-- 타입별 대기 -->
+              ${Object.keys(status.pendingByType).length > 0 ? `
+                <div class="mb-6">
+                  <h3 class="font-semibold text-gray-700 mb-3">대기중인 변경사항</h3>
+                  <div class="flex flex-wrap gap-2">
+                    ${Object.entries(status.pendingByType).map(([type, count]) => `
+                      <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
+                        ${type}: ${count}
+                      </span>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+
+              <!-- 캐시 통계 -->
+              <div class="mb-6">
+                <h3 class="font-semibold text-gray-700 mb-3 flex items-center">
+                  <i class="fas fa-database text-gray-500 mr-2"></i>
+                  캐시 통계
+                </h3>
+                <div class="bg-gray-50 p-4 rounded-lg">
+                  <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p class="text-gray-500">총 캐시 항목</p>
+                      <p class="font-semibold">${cacheStats.totalItems}</p>
+                    </div>
+                    <div>
+                      <p class="text-gray-500">캐시 크기</p>
+                      <p class="font-semibold">${cacheStats.totalSizeMB} MB</p>
+                    </div>
+                    <div>
+                      <p class="text-gray-500">만료된 항목</p>
+                      <p class="font-semibold text-yellow-600">${cacheStats.expired}</p>
+                    </div>
+                    <div>
+                      <p class="text-gray-500">타입별</p>
+                      <p class="font-semibold text-xs">${Object.entries(cacheStats.byType).map(([k, v]) => `${k}(${v})`).join(', ') || '없음'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 최근 동기화 로그 -->
+              <div>
+                <h3 class="font-semibold text-gray-700 mb-3 flex items-center">
+                  <i class="fas fa-history text-gray-500 mr-2"></i>
+                  최근 동기화 이력
+                </h3>
+                <div class="bg-gray-50 rounded-lg max-h-48 overflow-y-auto">
+                  ${status.recentLogs.length > 0 ? `
+                    <table class="w-full text-sm">
+                      <tbody>
+                        ${status.recentLogs.slice(0, 10).map(log => `
+                          <tr class="border-b border-gray-200">
+                            <td class="p-2">
+                              <i class="fas ${log.status === 'success' ? 'fa-check text-green-500' : log.status === 'failed' ? 'fa-times text-red-500' : 'fa-info-circle text-blue-500'}"></i>
+                            </td>
+                            <td class="p-2 text-gray-700">${log.changeType}</td>
+                            <td class="p-2 text-gray-500 text-xs">${new Date(log.timestamp).toLocaleString('ko-KR')}</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  ` : '<p class="p-4 text-gray-500 text-center">동기화 이력이 없습니다.</p>'}
+                </div>
+              </div>
+
+              <!-- 작업 버튼 -->
+              <div class="mt-6 flex justify-between">
+                <div class="space-x-2">
+                  ${status.failed > 0 ? `
+                    <button onclick="offline.retryFailed()" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm">
+                      <i class="fas fa-redo mr-1"></i>실패 재시도
+                    </button>
+                  ` : ''}
+                  <button onclick="offline.cleanupCache()" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm">
+                    <i class="fas fa-broom mr-1"></i>캐시 정리
+                  </button>
+                </div>
+                ${state.currentStudy ? `
+                  <button onclick="offline.prefetchStudyData('${state.currentStudy.id}')" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm">
+                    <i class="fas fa-download mr-1"></i>오프라인 데이터 다운로드
+                  </button>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+        modal.onclick = (e) => {
+          if (e.target === modal) modal.remove();
+        };
+      } catch (error) {
+        console.error('Failed to show sync dashboard:', error);
+        showToast('동기화 상태를 불러올 수 없습니다.', 'error');
+      }
+    },
+
+    // 충돌 해결 모달
+    async showConflictResolver(changeId) {
+      if (!window.eCRFOfflineDB) return;
+
+      const conflicts = await window.eCRFOfflineDB.getConflicts();
+      const conflict = conflicts.find(c => c.id === changeId);
+      if (!conflict) {
+        showToast('충돌 항목을 찾을 수 없습니다.', 'error');
+        return;
+      }
+
+      const modal = document.createElement('div');
+      modal.id = 'conflict-resolver-modal';
+      modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110]';
+      modal.innerHTML = `
+        <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden">
+          <div class="bg-gradient-to-r from-red-600 to-red-700 px-6 py-4 flex items-center justify-between">
+            <h2 class="text-xl font-bold text-white flex items-center">
+              <i class="fas fa-exclamation-triangle mr-3"></i>
+              데이터 충돌 해결
+            </h2>
+            <button onclick="document.getElementById('conflict-resolver-modal').remove()" class="text-white hover:text-gray-200">
+              <i class="fas fa-times text-xl"></i>
+            </button>
+          </div>
+          
+          <div class="p-6">
+            <p class="text-gray-600 mb-4">
+              동일한 데이터가 로컬과 서버에서 다르게 변경되었습니다. 어떤 버전을 사용할지 선택하세요.
+            </p>
+
+            <div class="grid grid-cols-2 gap-6 mb-6">
+              <!-- 로컬 데이터 -->
+              <div class="border-2 border-blue-300 rounded-lg p-4">
+                <h3 class="font-semibold text-blue-700 mb-2 flex items-center">
+                  <i class="fas fa-laptop mr-2"></i>
+                  로컬 데이터
+                </h3>
+                <p class="text-xs text-gray-500 mb-2">저장 시간: ${new Date(conflict.timestamp).toLocaleString('ko-KR')}</p>
+                <pre class="bg-gray-100 p-3 rounded text-xs overflow-auto max-h-48">${JSON.stringify(conflict.data, null, 2)}</pre>
+              </div>
+
+              <!-- 서버 데이터 -->
+              <div class="border-2 border-green-300 rounded-lg p-4">
+                <h3 class="font-semibold text-green-700 mb-2 flex items-center">
+                  <i class="fas fa-server mr-2"></i>
+                  서버 데이터
+                </h3>
+                <p class="text-xs text-gray-500 mb-2">충돌 감지: ${new Date(conflict.conflict?.detectedAt).toLocaleString('ko-KR')}</p>
+                <pre class="bg-gray-100 p-3 rounded text-xs overflow-auto max-h-48">${JSON.stringify(conflict.conflict?.serverData, null, 2)}</pre>
+              </div>
+            </div>
+
+            <div class="flex justify-center space-x-4">
+              <button onclick="offline.resolveConflict(${changeId}, 'local')" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg flex items-center">
+                <i class="fas fa-laptop mr-2"></i>
+                로컬 데이터 사용
+              </button>
+              <button onclick="offline.resolveConflict(${changeId}, 'server')" class="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg flex items-center">
+                <i class="fas fa-server mr-2"></i>
+                서버 데이터 사용
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    },
+
+    // 수동 동기화
+    async manualSync() {
+      if (!window.eCRFOfflineDB) return;
+      
+      showToast('동기화 중...', 'info');
+      const result = await window.eCRFOfflineDB.syncWithServer();
+      
+      if (result.synced > 0) {
+        showToast(`${result.synced}개 항목 동기화 완료`, 'success');
+      }
+      if (result.failed > 0) {
+        showToast(`${result.failed}개 항목 동기화 실패`, 'error');
+      }
+      
+      // 대시보드 새로고침
+      const modal = document.getElementById('sync-dashboard-modal');
+      if (modal) {
+        modal.remove();
+        this.showSyncDashboard();
+      }
+    },
+
+    // 실패한 항목 재시도
+    async retryFailed() {
+      if (!window.eCRFOfflineDB) return;
+
+      const result = await window.eCRFOfflineDB.retryFailed();
+      showToast(`${result.retried}개 항목 재시도 예약됨`, 'info');
+      
+      // 대시보드 새로고침
+      setTimeout(() => {
+        const modal = document.getElementById('sync-dashboard-modal');
+        if (modal) {
+          modal.remove();
+          this.showSyncDashboard();
+        }
+      }, 500);
+    },
+
+    // 충돌 해결
+    async resolveConflict(changeId, resolution) {
+      if (!window.eCRFOfflineDB) return;
+
+      try {
+        await window.eCRFOfflineDB.resolveConflict(changeId, resolution);
+        showToast('충돌이 해결되었습니다.', 'success');
+        
+        document.getElementById('conflict-resolver-modal')?.remove();
+        
+        // 동기화 대시보드 새로고침
+        const syncModal = document.getElementById('sync-dashboard-modal');
+        if (syncModal) {
+          syncModal.remove();
+          this.showSyncDashboard();
+        }
+
+        // 로컬 우선인 경우 즉시 동기화 시도
+        if (resolution === 'local' && state.isOnline) {
+          window.eCRFOfflineDB.syncWithServer();
+        }
+      } catch (error) {
+        showToast('충돌 해결에 실패했습니다.', 'error');
+      }
+    },
+
+    // 캐시 정리
+    async cleanupCache() {
+      if (!window.eCRFOfflineDB) return;
+
+      const expired = await window.eCRFOfflineDB.cleanupExpiredCache();
+      const logs = await window.eCRFOfflineDB.cleanupSyncLogs(7);
+      
+      showToast(`${expired.deleted + logs.deleted}개 항목 정리됨`, 'success');
+      
+      // 대시보드 새로고침
+      const modal = document.getElementById('sync-dashboard-modal');
+      if (modal) {
+        modal.remove();
+        this.showSyncDashboard();
+      }
+    },
+
+    // 스터디 데이터 프리페치
+    async prefetchStudyData(studyId) {
+      if (!window.eCRFOfflineDB) return;
+      
+      showToast('오프라인 데이터 다운로드 중...', 'info');
+      
+      const result = await window.eCRFOfflineDB.prefetchCRFData(studyId);
+      
+      if (result.errors?.length > 0) {
+        showToast(`${result.cached}개 캐시됨, ${result.errors.length}개 오류`, 'warning');
+      } else {
+        showToast(`${result.cached}개 항목이 오프라인 사용 가능`, 'success');
+      }
+    }
   };
 
   // =====================================================
@@ -2249,6 +2733,9 @@
     setupEventHandlers();
     updateAuthUI();
     
+    // 오프라인 지원 초기화
+    offline.init();
+    
     if (state.token && state.user) {
       navigateTo('dashboard');
     }
@@ -2256,9 +2743,28 @@
     // Service Worker registration
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/static/sw.js')
-        .then(reg => console.log('Service Worker registered:', reg.scope))
+        .then(reg => {
+          console.log('Service Worker registered:', reg.scope);
+          
+          // SW 업데이트 확인
+          reg.addEventListener('updatefound', () => {
+            const newWorker = reg.installing;
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                showToast('새 버전이 있습니다. 새로고침하세요.', 'info');
+              }
+            });
+          });
+        })
         .catch(err => console.log('Service Worker registration failed:', err));
     }
+
+    // 주기적 캐시 정리 (1시간마다)
+    setInterval(async () => {
+      if (window.eCRFOfflineDB) {
+        await window.eCRFOfflineDB.cleanupExpiredCache();
+      }
+    }, 60 * 60 * 1000);
   }
 
   // DOM Ready
