@@ -3023,6 +3023,16 @@
             <i class="fas fa-chevron-right text-gray-400"></i>
           </button>
           
+          ${user.role === 'ADMIN' ? `
+          <button onclick="showUserManagement(); closeModal();" class="flex items-center justify-between w-full p-4 hover:bg-gray-50 rounded-xl">
+            <div class="flex items-center">
+              <i class="fas fa-users-cog text-blue-400 w-8"></i>
+              <span>사용자 관리</span>
+            </div>
+            <i class="fas fa-chevron-right text-gray-400"></i>
+          </button>
+          ` : ''}
+          
           <button onclick="clearLocalData()" class="flex items-center justify-between w-full p-4 hover:bg-gray-50 rounded-xl text-red-600">
             <div class="flex items-center">
               <i class="fas fa-trash text-red-400 w-8"></i>
@@ -3507,6 +3517,568 @@
     }
     return outputArray;
   }
+
+  // =====================================================
+  // USER MANAGEMENT (관리자 전용)
+  // =====================================================
+  
+  // 역할 이름 매핑
+  const roleNames = {
+    'ADMIN': '시스템 관리자',
+    'PI': '연구 책임자 (PI)',
+    'SUB_INV': '공동 연구자',
+    'CRC': '임상 연구 코디네이터',
+    'CRA': '모니터 (CRA)',
+    'DM': '데이터 관리자'
+  };
+  
+  const roleColors = {
+    'ADMIN': 'bg-red-100 text-red-700',
+    'PI': 'bg-purple-100 text-purple-700',
+    'SUB_INV': 'bg-indigo-100 text-indigo-700',
+    'CRC': 'bg-blue-100 text-blue-700',
+    'CRA': 'bg-green-100 text-green-700',
+    'DM': 'bg-yellow-100 text-yellow-700'
+  };
+
+  async function showUserManagement() {
+    // 관리자 권한 확인
+    if (state.user?.role !== 'ADMIN') {
+      showToast('관리자 권한이 필요합니다.', 'error');
+      return;
+    }
+    
+    const content = document.getElementById('content');
+    if (!content) return;
+    
+    content.innerHTML = `
+      <div class="px-4 py-6 pb-24">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center">
+            <button onclick="navigateTo('dashboard')" class="mr-4 p-2 hover:bg-gray-100 rounded-full">
+              <i class="fas fa-arrow-left text-gray-600"></i>
+            </button>
+            <div>
+              <h1 class="text-xl font-bold text-gray-900">사용자 관리</h1>
+              <p class="text-sm text-gray-500">시스템 사용자 계정 관리</p>
+            </div>
+          </div>
+          <button onclick="showCreateUser()" class="btn-touch btn-touch-primary">
+            <i class="fas fa-user-plus mr-2"></i>
+            <span class="hidden sm:inline">사용자 등록</span>
+            <span class="sm:hidden">등록</span>
+          </button>
+        </div>
+        
+        <!-- Filters -->
+        <div class="bg-white rounded-xl p-4 shadow-sm mb-4">
+          <div class="flex flex-wrap gap-2">
+            <select id="user-filter-role" onchange="loadUserList()" 
+                    class="px-3 py-2 border rounded-lg text-sm bg-white">
+              <option value="">전체 역할</option>
+              <option value="ADMIN">시스템 관리자</option>
+              <option value="PI">연구 책임자</option>
+              <option value="SUB_INV">공동 연구자</option>
+              <option value="CRC">CRC</option>
+              <option value="CRA">CRA</option>
+              <option value="DM">데이터 관리자</option>
+            </select>
+            <select id="user-filter-status" onchange="loadUserList()" 
+                    class="px-3 py-2 border rounded-lg text-sm bg-white">
+              <option value="">전체 상태</option>
+              <option value="active">활성</option>
+              <option value="inactive">비활성</option>
+              <option value="locked">잠금</option>
+            </select>
+          </div>
+        </div>
+        
+        <!-- User List -->
+        <div id="user-list" class="space-y-3">
+          <div class="flex items-center justify-center py-12">
+            <i class="fas fa-spinner fa-spin text-blue-500 text-2xl"></i>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    loadUserList();
+  }
+  window.showUserManagement = showUserManagement;
+
+  async function loadUserList() {
+    const listEl = document.getElementById('user-list');
+    if (!listEl) return;
+    
+    const roleFilter = document.getElementById('user-filter-role')?.value || '';
+    const statusFilter = document.getElementById('user-filter-status')?.value || '';
+    
+    try {
+      let url = '/auth/users?limit=100';
+      if (roleFilter) url += `&role=${roleFilter}`;
+      if (statusFilter) url += `&status=${statusFilter}`;
+      
+      const result = await api.get(url);
+      const users = result.data || [];
+      
+      if (users.length === 0) {
+        listEl.innerHTML = `
+          <div class="text-center py-12 text-gray-500">
+            <i class="fas fa-users text-4xl mb-4 opacity-50"></i>
+            <p>등록된 사용자가 없습니다.</p>
+          </div>
+        `;
+        return;
+      }
+      
+      listEl.innerHTML = users.map(user => {
+        const status = (user.status || '').toUpperCase();
+        const isActive = status === 'ACTIVE';
+        const isLocked = status === 'LOCKED';
+        return `
+        <div class="bg-white rounded-xl p-4 shadow-sm" data-user-id="${user.id}">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center flex-1 min-w-0">
+              <!-- Avatar -->
+              <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold mr-3 flex-shrink-0
+                          ${isActive ? 'bg-blue-500' : isLocked ? 'bg-red-500' : 'bg-gray-400'}">
+                ${ui.getInitials(user.name)}
+              </div>
+              
+              <!-- User Info -->
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center">
+                  <span class="font-medium text-gray-900 truncate">${user.name}</span>
+                  ${user.two_factor_enabled ? '<i class="fas fa-shield-alt text-green-500 ml-2 text-xs" title="2FA 활성화"></i>' : ''}
+                </div>
+                <div class="text-sm text-gray-500 truncate">${user.email}</div>
+                <div class="flex items-center mt-1 flex-wrap gap-1">
+                  <span class="px-2 py-0.5 rounded-full text-xs ${roleColors[user.role] || 'bg-gray-100 text-gray-700'}">
+                    ${roleNames[user.role] || user.role}
+                  </span>
+                  <span class="px-2 py-0.5 rounded-full text-xs ${
+                    isActive ? 'bg-green-100 text-green-700' : 
+                    isLocked ? 'bg-red-100 text-red-700' : 
+                    'bg-gray-100 text-gray-700'
+                  }">
+                    ${isActive ? '활성' : isLocked ? '잠금' : '비활성'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Actions -->
+            <div class="flex items-center ml-2">
+              <button onclick="showUserDetail('${user.id}')" class="p-2 hover:bg-gray-100 rounded-full" title="상세보기">
+                <i class="fas fa-ellipsis-v text-gray-400"></i>
+              </button>
+            </div>
+          </div>
+          
+          <!-- Last Login -->
+          ${user.last_login_at ? `
+            <div class="mt-2 pt-2 border-t text-xs text-gray-400">
+              <i class="fas fa-clock mr-1"></i>
+              마지막 로그인: ${new Date(user.last_login_at).toLocaleString('ko-KR')}
+            </div>
+          ` : ''}
+        </div>
+      `;}).join('');
+      
+    } catch (error) {
+      listEl.innerHTML = `
+        <div class="text-center py-12 text-red-500">
+          <i class="fas fa-exclamation-circle text-4xl mb-4"></i>
+          <p>사용자 목록을 불러오는데 실패했습니다.</p>
+          <button onclick="loadUserList()" class="mt-4 text-blue-600">다시 시도</button>
+        </div>
+      `;
+    }
+  }
+  window.loadUserList = loadUserList;
+
+  function showCreateUser() {
+    showModal('사용자 등록', `
+      <form id="create-user-form" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">이름 <span class="text-red-500">*</span></label>
+          <input type="text" name="name" required
+                 class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                 placeholder="홍길동">
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">이메일 <span class="text-red-500">*</span></label>
+          <input type="email" name="email" required
+                 class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                 placeholder="user@example.com">
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">비밀번호 <span class="text-red-500">*</span></label>
+          <input type="password" name="password" required minlength="8"
+                 class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                 placeholder="최소 8자 이상">
+          <p class="text-xs text-gray-500 mt-1">대소문자, 숫자, 특수문자 포함 권장</p>
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">비밀번호 확인 <span class="text-red-500">*</span></label>
+          <input type="password" name="confirmPassword" required
+                 class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                 placeholder="비밀번호 재입력">
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">역할 <span class="text-red-500">*</span></label>
+          <select name="role" required class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 bg-white">
+            <option value="">역할 선택</option>
+            <option value="ADMIN">시스템 관리자</option>
+            <option value="PI">연구 책임자 (PI)</option>
+            <option value="SUB_INV">공동 연구자</option>
+            <option value="CRC">임상 연구 코디네이터 (CRC)</option>
+            <option value="CRA">모니터 (CRA)</option>
+            <option value="DM">데이터 관리자 (DM)</option>
+          </select>
+        </div>
+        
+        <!-- Role Description -->
+        <div id="role-description" class="p-3 bg-gray-50 rounded-lg text-sm text-gray-600 hidden">
+        </div>
+      </form>
+      
+      <script>
+        document.querySelector('select[name="role"]').addEventListener('change', function() {
+          const descEl = document.getElementById('role-description');
+          const descriptions = {
+            'ADMIN': '시스템 전체 관리, 사용자 관리, 모든 데이터 접근 권한',
+            'PI': '연구 총괄 책임, 프로토콜 승인, 서명 권한',
+            'SUB_INV': '임상 데이터 입력 및 검토, PI 위임 업무 수행',
+            'CRC': '피험자 등록, CRF 데이터 입력, Visit 관리',
+            'CRA': '데이터 모니터링, Query 생성/관리, SDV 수행',
+            'DM': '데이터 검증, Lock/Freeze 관리, Export 권한'
+          };
+          if (this.value && descriptions[this.value]) {
+            descEl.textContent = descriptions[this.value];
+            descEl.classList.remove('hidden');
+          } else {
+            descEl.classList.add('hidden');
+          }
+        });
+      </script>
+    `, [
+      { label: '취소', onclick: 'closeModal()' },
+      { label: '등록', class: 'bg-blue-600 text-white', onclick: 'submitCreateUser()' }
+    ]);
+    
+    // Role description handler
+    setTimeout(() => {
+      const roleSelect = document.querySelector('select[name="role"]');
+      if (roleSelect) {
+        roleSelect.addEventListener('change', function() {
+          const descEl = document.getElementById('role-description');
+          const descriptions = {
+            'ADMIN': '시스템 전체 관리, 사용자 관리, 모든 데이터 접근 권한',
+            'PI': '연구 총괄 책임, 프로토콜 승인, 서명 권한',
+            'SUB_INV': '임상 데이터 입력 및 검토, PI 위임 업무 수행',
+            'CRC': '피험자 등록, CRF 데이터 입력, Visit 관리',
+            'CRA': '데이터 모니터링, Query 생성/관리, SDV 수행',
+            'DM': '데이터 검증, Lock/Freeze 관리, Export 권한'
+          };
+          if (this.value && descriptions[this.value]) {
+            descEl.textContent = descriptions[this.value];
+            descEl.classList.remove('hidden');
+          } else {
+            descEl.classList.add('hidden');
+          }
+        });
+      }
+    }, 100);
+  }
+  window.showCreateUser = showCreateUser;
+
+  async function submitCreateUser() {
+    const form = document.getElementById('create-user-form');
+    if (!form) return;
+    
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    
+    // Validation
+    if (!data.name || !data.email || !data.password || !data.role) {
+      showToast('모든 필수 항목을 입력해주세요.', 'error');
+      return;
+    }
+    
+    if (data.password !== data.confirmPassword) {
+      showToast('비밀번호가 일치하지 않습니다.', 'error');
+      return;
+    }
+    
+    if (data.password.length < 8) {
+      showToast('비밀번호는 최소 8자 이상이어야 합니다.', 'error');
+      return;
+    }
+    
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(data.email)) {
+      showToast('유효한 이메일 형식을 입력해주세요.', 'error');
+      return;
+    }
+    
+    try {
+      const result = await api.post('/auth/users', {
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        role: data.role
+      });
+      
+      if (result.success) {
+        closeModal();
+        showToast(`${data.name} 사용자가 등록되었습니다.`, 'success');
+        loadUserList();
+      }
+    } catch (error) {
+      showToast(error.error || '사용자 등록에 실패했습니다.', 'error');
+    }
+  }
+  window.submitCreateUser = submitCreateUser;
+
+  async function showUserDetail(userId) {
+    try {
+      // Get user list and find the user
+      const result = await api.get('/auth/users?limit=100');
+      const users = result.data || [];
+      const user = users.find(u => u.id === userId);
+      
+      if (!user) {
+        showToast('사용자를 찾을 수 없습니다.', 'error');
+        return;
+      }
+      
+      const status = (user.status || '').toUpperCase();
+      const isActive = status === 'ACTIVE';
+      const isLocked = status === 'LOCKED';
+      
+      showModal('사용자 상세', `
+        <div class="space-y-4">
+          <!-- User Avatar and Name -->
+          <div class="flex items-center p-4 bg-gray-50 rounded-xl">
+            <div class="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-bold mr-4
+                        ${isActive ? 'bg-blue-500' : isLocked ? 'bg-red-500' : 'bg-gray-400'}">
+              ${ui.getInitials(user.name)}
+            </div>
+            <div>
+              <h3 class="text-lg font-semibold">${user.name}</h3>
+              <p class="text-gray-500">${user.email}</p>
+              <div class="flex items-center mt-1 gap-2">
+                <span class="px-2 py-0.5 rounded-full text-xs ${roleColors[user.role] || 'bg-gray-100 text-gray-700'}">
+                  ${roleNames[user.role] || user.role}
+                </span>
+                ${user.two_factor_enabled ? '<span class="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700"><i class="fas fa-shield-alt mr-1"></i>2FA</span>' : ''}
+              </div>
+            </div>
+          </div>
+          
+          <!-- User Info -->
+          <div class="space-y-3">
+            <div class="flex justify-between py-2 border-b">
+              <span class="text-gray-500">상태</span>
+              <span class="font-medium ${
+                isActive ? 'text-green-600' : 
+                isLocked ? 'text-red-600' : 
+                'text-gray-600'
+              }">
+                ${isActive ? '활성' : isLocked ? '잠금' : '비활성'}
+              </span>
+            </div>
+            <div class="flex justify-between py-2 border-b">
+              <span class="text-gray-500">등록일</span>
+              <span>${new Date(user.created_at).toLocaleDateString('ko-KR')}</span>
+            </div>
+            <div class="flex justify-between py-2 border-b">
+              <span class="text-gray-500">마지막 로그인</span>
+              <span>${user.last_login_at ? new Date(user.last_login_at).toLocaleString('ko-KR') : '-'}</span>
+            </div>
+          </div>
+          
+          <!-- Actions -->
+          <div class="space-y-2 pt-4">
+            ${isActive ? `
+              <button onclick="updateUserStatus('${user.id}', 'inactive')" 
+                      class="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl border">
+                <div class="flex items-center">
+                  <i class="fas fa-user-slash text-gray-400 w-8"></i>
+                  <span>계정 비활성화</span>
+                </div>
+                <i class="fas fa-chevron-right text-gray-400"></i>
+              </button>
+            ` : `
+              <button onclick="updateUserStatus('${user.id}', 'active')" 
+                      class="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl border">
+                <div class="flex items-center">
+                  <i class="fas fa-user-check text-green-400 w-8"></i>
+                  <span>계정 활성화</span>
+                </div>
+                <i class="fas fa-chevron-right text-gray-400"></i>
+              </button>
+            `}
+            
+            ${isLocked ? `
+              <button onclick="updateUserStatus('${user.id}', 'active')" 
+                      class="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl border">
+                <div class="flex items-center">
+                  <i class="fas fa-unlock text-yellow-400 w-8"></i>
+                  <span>잠금 해제</span>
+                </div>
+                <i class="fas fa-chevron-right text-gray-400"></i>
+              </button>
+            ` : ''}
+            
+            <button onclick="showResetPassword('${user.id}', '${user.email}')" 
+                    class="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl border">
+              <div class="flex items-center">
+                <i class="fas fa-key text-blue-400 w-8"></i>
+                <span>비밀번호 재설정</span>
+              </div>
+              <i class="fas fa-chevron-right text-gray-400"></i>
+            </button>
+            
+            <button onclick="confirmDeleteUser('${user.id}', '${user.name}')" 
+                    class="w-full flex items-center justify-between p-3 hover:bg-red-50 rounded-xl border border-red-200 text-red-600">
+              <div class="flex items-center">
+                <i class="fas fa-trash text-red-400 w-8"></i>
+                <span>사용자 삭제</span>
+              </div>
+              <i class="fas fa-chevron-right text-red-400"></i>
+            </button>
+          </div>
+        </div>
+      `, [
+        { label: '닫기', onclick: 'closeModal()' }
+      ]);
+      
+    } catch (error) {
+      showToast('사용자 정보를 불러올 수 없습니다.', 'error');
+    }
+  }
+  window.showUserDetail = showUserDetail;
+
+  async function updateUserStatus(userId, newStatus) {
+    try {
+      const result = await api.put(`/auth/users/${userId}/status`, { status: newStatus });
+      
+      if (result.success) {
+        closeModal();
+        showToast(`사용자 상태가 변경되었습니다.`, 'success');
+        loadUserList();
+      }
+    } catch (error) {
+      showToast(error.error || '상태 변경에 실패했습니다.', 'error');
+    }
+  }
+  window.updateUserStatus = updateUserStatus;
+
+  function showResetPassword(userId, email) {
+    closeModal();
+    setTimeout(() => {
+      showModal('비밀번호 재설정', `
+        <div class="space-y-4">
+          <p class="text-gray-600">
+            <strong>${email}</strong> 사용자의 비밀번호를 재설정합니다.
+          </p>
+          
+          <form id="reset-password-form" class="space-y-4">
+            <input type="hidden" name="userId" value="${userId}">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">새 비밀번호</label>
+              <input type="password" name="newPassword" required minlength="8"
+                     class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                     placeholder="최소 8자 이상">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">비밀번호 확인</label>
+              <input type="password" name="confirmPassword" required
+                     class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                     placeholder="비밀번호 재입력">
+            </div>
+          </form>
+        </div>
+      `, [
+        { label: '취소', onclick: 'closeModal()' },
+        { label: '재설정', class: 'bg-blue-600 text-white', onclick: 'submitResetPassword()' }
+      ]);
+    }, 300);
+  }
+  window.showResetPassword = showResetPassword;
+
+  async function submitResetPassword() {
+    const form = document.getElementById('reset-password-form');
+    if (!form) return;
+    
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    
+    if (data.newPassword !== data.confirmPassword) {
+      showToast('비밀번호가 일치하지 않습니다.', 'error');
+      return;
+    }
+    
+    try {
+      const result = await api.put(`/auth/users/${data.userId}/password`, {
+        newPassword: data.newPassword
+      });
+      
+      if (result.success) {
+        closeModal();
+        showToast('비밀번호가 재설정되었습니다.', 'success');
+      }
+    } catch (error) {
+      showToast(error.error || '비밀번호 재설정에 실패했습니다.', 'error');
+    }
+  }
+  window.submitResetPassword = submitResetPassword;
+
+  function confirmDeleteUser(userId, userName) {
+    closeModal();
+    setTimeout(() => {
+      showModal('사용자 삭제', `
+        <div class="space-y-4">
+          <div class="p-4 bg-red-50 border border-red-200 rounded-xl">
+            <p class="text-red-700">
+              <i class="fas fa-exclamation-triangle mr-2"></i>
+              <strong>${userName}</strong> 사용자를 정말 삭제하시겠습니까?
+            </p>
+            <p class="text-sm text-red-600 mt-2">
+              이 작업은 되돌릴 수 없습니다. 해당 사용자의 모든 활동 기록은 감사 로그에 남습니다.
+            </p>
+          </div>
+        </div>
+      `, [
+        { label: '취소', onclick: 'closeModal()' },
+        { label: '삭제', class: 'bg-red-600 text-white', onclick: `deleteUser('${userId}')` }
+      ]);
+    }, 300);
+  }
+  window.confirmDeleteUser = confirmDeleteUser;
+
+  async function deleteUser(userId) {
+    try {
+      const result = await api.delete(`/auth/users/${userId}`);
+      
+      if (result.success) {
+        closeModal();
+        showToast('사용자가 삭제되었습니다.', 'success');
+        loadUserList();
+      }
+    } catch (error) {
+      showToast(error.error || '사용자 삭제에 실패했습니다.', 'error');
+    }
+  }
+  window.deleteUser = deleteUser;
 
   // =====================================================
   // INITIALIZATION

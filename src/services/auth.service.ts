@@ -361,38 +361,52 @@ export async function getUsers(
   }
 ): Promise<{ users: Omit<User, 'password_hash'>[]; total: number }> {
   let query = `SELECT id, email, name, role, status, failed_login_attempts, locked_until, 
-               password_changed_at, last_login_at, created_at, updated_at FROM users WHERE 1=1`;
+               password_changed_at, last_login_at, two_factor_enabled, created_at, updated_at FROM users WHERE 1=1`;
   let countQuery = `SELECT COUNT(*) as total FROM users WHERE 1=1`;
-  const params: (string | number)[] = [];
+  const filterParams: (string | number)[] = [];
+  const queryParams: (string | number)[] = [];
 
   if (options?.role) {
     query += ` AND role = ?`;
     countQuery += ` AND role = ?`;
-    params.push(options.role);
+    filterParams.push(options.role);
+    queryParams.push(options.role);
   }
 
   if (options?.status) {
     query += ` AND status = ?`;
     countQuery += ` AND status = ?`;
-    params.push(options.status);
+    filterParams.push(options.status);
+    queryParams.push(options.status);
   }
 
   query += ` ORDER BY created_at DESC`;
 
   if (options?.limit) {
     query += ` LIMIT ?`;
-    params.push(options.limit);
+    queryParams.push(options.limit);
   }
 
   if (options?.offset) {
     query += ` OFFSET ?`;
-    params.push(options.offset);
+    queryParams.push(options.offset);
   }
 
-  const countResult = await db.prepare(countQuery)
-    .bind(...params.slice(0, params.length - 2 > 0 ? params.length - 2 : params.length))
-    .first<{ total: number }>();
-  const usersResult = await db.prepare(query).bind(...params).all<Omit<User, 'password_hash'>>();
+  // Count query uses only filter params (no LIMIT/OFFSET)
+  let countResult: { total: number } | null = null;
+  if (filterParams.length > 0) {
+    countResult = await db.prepare(countQuery).bind(...filterParams).first<{ total: number }>();
+  } else {
+    countResult = await db.prepare(countQuery).first<{ total: number }>();
+  }
+  
+  // Users query uses all params including LIMIT/OFFSET
+  let usersResult;
+  if (queryParams.length > 0) {
+    usersResult = await db.prepare(query).bind(...queryParams).all<Omit<User, 'password_hash'>>();
+  } else {
+    usersResult = await db.prepare(query).all<Omit<User, 'password_hash'>>();
+  }
 
   return {
     users: usersResult.results,

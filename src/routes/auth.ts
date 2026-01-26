@@ -208,4 +208,208 @@ auth.get('/users', requireAuth, requireRole('ADMIN'), async (c) => {
   }
 });
 
+/**
+ * PUT /api/auth/users/:userId/status
+ * 사용자 상태 변경 (관리자 전용)
+ */
+auth.put('/users/:userId/status', requireAuth, requireRole('ADMIN'), async (c) => {
+  try {
+    const userId = c.req.param('userId');
+    const body = await c.req.json();
+    const { status } = body;
+    const currentUser = getAuthUser(c);
+
+    // 본인 계정 상태 변경 방지
+    if (currentUser?.userId === userId) {
+      return c.json({ success: false, error: '본인 계정의 상태는 변경할 수 없습니다.' }, 400);
+    }
+
+    // 소문자 입력 처리하여 대문자로 변환
+    const normalizedStatus = status.toUpperCase();
+    const validStatuses = ['ACTIVE', 'INACTIVE', 'LOCKED'];
+    if (!validStatuses.includes(normalizedStatus)) {
+      return c.json({ success: false, error: '유효하지 않은 상태입니다.' }, 400);
+    }
+
+    // 사용자 존재 확인
+    const existingUser = await c.env.DB.prepare(
+      'SELECT id, name, email, role FROM users WHERE id = ?'
+    ).bind(userId).first();
+
+    if (!existingUser) {
+      return c.json({ success: false, error: '사용자를 찾을 수 없습니다.' }, 404);
+    }
+
+    // 상태 업데이트 (대문자로 저장)
+    await c.env.DB.prepare(
+      'UPDATE users SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(normalizedStatus, userId).run();
+
+    // 감사 로그 기록
+    await c.env.DB.prepare(`
+      INSERT INTO audit_logs (
+        id, user_id, user_name, user_role, action, table_name, record_id,
+        new_value, ip_address, user_agent
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      crypto.randomUUID(),
+      currentUser?.userId || '',
+      currentUser?.name || 'Admin',
+      currentUser?.role || 'ADMIN',
+      'UPDATE',
+      'users',
+      userId,
+      JSON.stringify({ status: normalizedStatus, target_user: existingUser.email }),
+      null,
+      null
+    ).run();
+
+    return c.json({
+      success: true,
+      message: '사용자 상태가 변경되었습니다.',
+    });
+  } catch (error) {
+    console.error('Update user status error:', error);
+    return c.json({ success: false, error: '사용자 상태 변경 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * PUT /api/auth/users/:userId/password
+ * 사용자 비밀번호 재설정 (관리자 전용)
+ */
+auth.put('/users/:userId/password', requireAuth, requireRole('ADMIN'), async (c) => {
+  try {
+    const userId = c.req.param('userId');
+    const body = await c.req.json();
+    const { newPassword } = body;
+    const currentUser = getAuthUser(c);
+
+    if (!newPassword || newPassword.length < 8) {
+      return c.json({ success: false, error: '비밀번호는 최소 8자 이상이어야 합니다.' }, 400);
+    }
+
+    // 사용자 존재 확인
+    const existingUser = await c.env.DB.prepare(
+      'SELECT id, name, email FROM users WHERE id = ?'
+    ).bind(userId).first();
+
+    if (!existingUser) {
+      return c.json({ success: false, error: '사용자를 찾을 수 없습니다.' }, 404);
+    }
+
+    // 비밀번호 해싱 (SHA-256 with salt)
+    const salt = crypto.randomUUID();
+    const encoder = new TextEncoder();
+    const data = encoder.encode(newPassword + salt);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    const passwordHash = `${salt}:${hashHex}`;
+
+    // 비밀번호 업데이트
+    await c.env.DB.prepare(
+      'UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(passwordHash, userId).run();
+
+    // 감사 로그 기록
+    await c.env.DB.prepare(`
+      INSERT INTO audit_logs (
+        id, user_id, user_name, user_role, action, table_name, record_id,
+        new_value, ip_address, user_agent
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      crypto.randomUUID(),
+      currentUser?.userId || '',
+      currentUser?.name || 'Admin',
+      currentUser?.role || 'ADMIN',
+      'UPDATE',
+      'users',
+      userId,
+      JSON.stringify({ action: 'RESET_PASSWORD', target_user: existingUser.email, reset_by_admin: true }),
+      null,
+      null
+    ).run();
+
+    return c.json({
+      success: true,
+      message: '비밀번호가 재설정되었습니다.',
+    });
+  } catch (error) {
+    console.error('Reset user password error:', error);
+    return c.json({ success: false, error: '비밀번호 재설정 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * DELETE /api/auth/users/:userId
+ * 사용자 삭제 (관리자 전용)
+ */
+auth.delete('/users/:userId', requireAuth, requireRole('ADMIN'), async (c) => {
+  try {
+    const userId = c.req.param('userId');
+    const currentUser = getAuthUser(c);
+
+    // 본인 계정 삭제 방지
+    if (currentUser?.userId === userId) {
+      return c.json({ success: false, error: '본인 계정은 삭제할 수 없습니다.' }, 400);
+    }
+
+    // 사용자 존재 확인
+    const existingUser = await c.env.DB.prepare(
+      'SELECT id, name, email, role FROM users WHERE id = ?'
+    ).bind(userId).first();
+
+    if (!existingUser) {
+      return c.json({ success: false, error: '사용자를 찾을 수 없습니다.' }, 404);
+    }
+
+    // 활성 세션 삭제
+    await c.env.DB.prepare(
+      'DELETE FROM sessions WHERE user_id = ?'
+    ).bind(userId).run();
+
+    // 사이트 할당 삭제
+    await c.env.DB.prepare(
+      'DELETE FROM site_users WHERE user_id = ?'
+    ).bind(userId).run();
+
+    // 사용자 삭제
+    await c.env.DB.prepare(
+      'DELETE FROM users WHERE id = ?'
+    ).bind(userId).run();
+
+    // 감사 로그 기록
+    await c.env.DB.prepare(`
+      INSERT INTO audit_logs (
+        id, user_id, user_name, user_role, action, table_name, record_id,
+        old_value, ip_address, user_agent
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      crypto.randomUUID(),
+      currentUser?.userId || '',
+      currentUser?.name || 'Admin',
+      currentUser?.role || 'ADMIN',
+      'DELETE',
+      'users',
+      userId,
+      JSON.stringify({ 
+        deleted_user: existingUser.email, 
+        deleted_name: existingUser.name,
+        deleted_role: existingUser.role
+      }),
+      null,
+      null
+    ).run();
+
+    return c.json({
+      success: true,
+      message: '사용자가 삭제되었습니다.',
+    });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    return c.json({ success: false, error: '사용자 삭제 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
 export default auth;
