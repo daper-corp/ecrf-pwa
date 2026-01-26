@@ -13,6 +13,7 @@ import subjectRoutes from './routes/subjects';
 import visitRoutes from './routes/visits';
 import queryRoutes from './routes/queries';
 import signatureRoutes from './routes/signatures';
+import editCheckRoutes from './routes/editchecks';
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -63,6 +64,9 @@ app.route('/api/queries', queryRoutes);
 
 // Signature API
 app.route('/api/signatures', signatureRoutes);
+
+// Edit Check API
+app.route('/api/edit-checks', editCheckRoutes);
 
 // Audit Log API
 app.get('/api/audit/logs', async (c) => {

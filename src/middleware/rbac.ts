@@ -45,6 +45,15 @@ export const PERMISSIONS = {
   
   // 감사 로그 조회
   VIEW_AUDIT: ['ADMIN', 'PI', 'DM'],
+  
+  // Edit Check 관리
+  MANAGE_EDIT_CHECKS: ['ADMIN', 'DM'],
+  
+  // Edit Check 실행
+  EXECUTE_EDIT_CHECKS: ['ADMIN', 'PI', 'SUB_INV', 'CRC', 'CRA', 'DM'],
+  
+  // Edit Check 결과 조회
+  VIEW_EDIT_CHECKS: ['ADMIN', 'PI', 'SUB_INV', 'CRC', 'CRA', 'DM'],
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

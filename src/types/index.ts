@@ -426,3 +426,103 @@ export type Variables = {
   user: AuthPayload | null;
   sessionId: string | null;
 };
+
+// =====================================================
+// EDIT CHECK TYPES
+// =====================================================
+
+export type EditCheckRuleType = 
+  | 'RANGE'           // 범위 검사
+  | 'REQUIRED'        // 필수 값 검사
+  | 'CROSS_FIELD'     // 동일 폼 내 필드 간 검사
+  | 'CROSS_FORM'      // 폼 간 검사 (같은 Visit)
+  | 'CROSS_VISIT'     // Visit 간 검사
+  | 'TEMPORAL'        // 날짜/시간 순서 검사
+  | 'CONDITIONAL'     // 조건부 검사
+  | 'CONSISTENCY'     // 일관성 검사
+  | 'MEDICAL_LOGIC'   // 의학적 논리 검사
+  | 'CUSTOM';         // 사용자 정의 검사
+
+export type EditCheckSeverity = 'ERROR' | 'WARNING' | 'INFO';
+export type EditCheckResolutionStatus = 'PENDING' | 'ACKNOWLEDGED' | 'RESOLVED' | 'WAIVED' | 'QUERY_OPENED';
+export type EditCheckBatchStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+export type EditCheckWaiverType = 'PERMANENT' | 'TEMPORARY' | 'ONE_TIME';
+export type EditCheckApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface EditCheckRule {
+  id: string;
+  study_id: string;
+  rule_code: string;
+  rule_name: string;
+  description: string | null;
+  rule_type: EditCheckRuleType;
+  severity: EditCheckSeverity;
+  is_active: boolean;
+  target_form_code: string | null;
+  target_field_code: string | null;
+  rule_definition: string;  // JSON
+  error_message_template: string;
+  error_message_ko: string | null;
+  auto_query_enabled: boolean;
+  auto_query_priority: QueryPriority;
+  auto_query_category: QueryCategory;
+  version: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EditCheckResult {
+  id: string;
+  rule_id: string;
+  crf_instance_id: string;
+  crf_data_id: string | null;
+  passed: boolean;
+  severity: EditCheckSeverity;
+  error_message: string | null;
+  field_code: string | null;
+  field_value: string | null;
+  context_data: string | null;  // JSON
+  resolution_status: EditCheckResolutionStatus;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  resolution_note: string | null;
+  query_id: string | null;
+  executed_at: string;
+  execution_context: string | null;
+}
+
+export interface EditCheckBatch {
+  id: string;
+  study_id: string;
+  scope_type: 'STUDY' | 'SITE' | 'SUBJECT' | 'VISIT' | 'CRF';
+  scope_id: string;
+  total_rules_executed: number;
+  total_checks_performed: number;
+  passed_count: number;
+  error_count: number;
+  warning_count: number;
+  info_count: number;
+  executed_by: string;
+  started_at: string;
+  completed_at: string | null;
+  status: EditCheckBatchStatus;
+  error_message: string | null;
+}
+
+export interface EditCheckWaiver {
+  id: string;
+  rule_id: string;
+  subject_id: string | null;
+  visit_id: string | null;
+  crf_instance_id: string | null;
+  waiver_reason: string;
+  waiver_type: EditCheckWaiverType;
+  expiry_date: string | null;
+  requested_by: string;
+  requested_at: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  approval_status: EditCheckApprovalStatus;
+  rejection_reason: string | null;
+}
