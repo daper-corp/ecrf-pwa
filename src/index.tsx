@@ -14,6 +14,8 @@ import visitRoutes from './routes/visits';
 import queryRoutes from './routes/queries';
 import signatureRoutes from './routes/signatures';
 import editCheckRoutes from './routes/editchecks';
+import lockRoutes from './routes/locks';
+import exportRoutes from './routes/exports';
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -67,6 +69,12 @@ app.route('/api/signatures', signatureRoutes);
 
 // Edit Check API
 app.route('/api/edit-checks', editCheckRoutes);
+
+// Data Lock API
+app.route('/api/locks', lockRoutes);
+
+// Data Export API
+app.route('/api/exports', exportRoutes);
 
 // Audit Log API
 app.get('/api/audit/logs', async (c) => {
