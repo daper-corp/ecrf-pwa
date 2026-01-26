@@ -28,24 +28,32 @@
 | 전자서명 | ✅ 완료 | CRF 완료/승인 서명, 비밀번호 확인 |
 | 대시보드 | ✅ 완료 | Study/Site/Subject/Query 통계 |
 
-### 🔄 Phase 2: 고급 기능 (진행 중)
+### ✅ Phase 2: 고급 기능 (완료)
 
 | 기능 | 상태 | 설명 |
 |------|------|------|
 | 고급 Edit Check | ✅ 완료 | Cross-Field 검증, Range 검증, Cloudflare 호환 조건 평가기 |
 | Data Lock/Freeze | ✅ 완료 | Subject/Visit/Site/Study 레벨 데이터 잠금, Lock 이력 관리 |
 | Data Export (CSV/JSON) | ✅ 완료 | Subject, CRF Data, Query, Audit Trail Export |
-| CDISC Export | ⏳ 대기중 | SDTM/ODM XML 포맷 Export |
-| 리포트/대시보드 강화 | ⏳ 대기중 | 등록 현황, Query 통계, 진행률 |
+| CDISC Export | ✅ 완료 | SDTM Domain Export (DM, VS, AE 등), ODM XML 포맷 |
+| 리포트/대시보드 강화 | ✅ 완료 | 등록 현황, Query 통계, CRF 진행률, Site 성과 |
 
-### 🔄 Phase 3: PWA 고도화 (진행 예정)
+### ✅ Phase 3: PWA 고도화 (완료)
 
 | 기능 | 상태 | 설명 |
 |------|------|------|
-| 오프라인 지원 | ⏳ 대기중 | Service Worker + IndexedDB |
-| 동기화 시스템 | ⏳ 대기중 | 충돌 해결 메커니즘 |
+| 오프라인 지원 | ✅ 완료 | Service Worker v2 + IndexedDB 캐싱 |
+| 동기화 시스템 | ✅ 완료 | 충돌 감지/해결, 동기화 대시보드 |
+| 데이터 프리페치 | ✅ 완료 | 오프라인 CRF 작업용 데이터 다운로드 |
+| 동기화 대시보드 | ✅ 완료 | 실시간 상태, 이력, 충돌 관리 UI |
+
+### 🔄 Phase 4: 보안/모바일 강화 (진행 예정)
+
+| 기능 | 상태 | 설명 |
+|------|------|------|
 | 모바일 최적화 | ⏳ 대기중 | 터치 인터페이스 최적화 |
-| 보안 강화 | ⏳ 대기중 | 다층 암호화 체계 |
+| 보안 강화 | ⏳ 대기중 | 2FA, 다층 암호화 체계 |
+| Push 알림 | ⏳ 대기중 | Query/Signature 알림 |
 
 ---
 
@@ -437,12 +445,29 @@ npm run deploy
   - CSV/JSON 포맷 지원
   - Subject, CRF Data (Long/Wide), Query, Audit Trail Export
   - Export 활동 감사 로깅
+- **CDISC Export** (Phase 2)
+  - ODM XML 포맷 (CDISC ODM 1.3.2 준수)
+  - SDTM Domain Export (DM, VS, AE, CM, MH, LB, PE)
+  - CSV/JSON 포맷 지원
+- **리포트/대시보드 강화** (Phase 2)
+  - Dashboard Overview (메트릭, 최근 활동, 알림)
+  - 등록 현황 (목표 대비 진행률, 기관별 통계)
+  - CRF 진행률 (Form별/Visit별 완료율)
+  - Query 통계 (상태별, Aging 분석)
+  - Site 성과 비교
+- **오프라인 지원** (Phase 3)
+  - Service Worker v2 (정적 리소스/API 캐싱)
+  - IndexedDB 기반 오프라인 데이터 저장
+  - 오프라인 변경사항 자동 동기화
+  - 충돌 감지 및 해결 시스템
+  - 동기화 대시보드 UI
+  - CRF 데이터 프리페치
 
 ### 다음 단계 🔄
-- CDISC 포맷 Export (SDTM/ODM XML)
-- 리포트/대시보드 강화
-- 오프라인 지원
-- 모바일 최적화
+- 모바일 UI 최적화
+- 2FA (Two-Factor Authentication)
+- Push 알림 시스템
+- 고급 리포트/차트
 
 ---
 
@@ -632,6 +657,172 @@ curl "http://localhost:3000/api/exports/crf-wide?study_id=study_001&form_code=VS
   ]
 }
 ```
+
+---
+
+## 🌐 CDISC Export 기능 가이드
+
+### SDTM Domain Export
+
+| Domain | 설명 | 주요 변수 |
+|--------|------|----------|
+| **DM** | Demographics | USUBJID, SUBJID, RFSTDTC, SEX, RACE |
+| **VS** | Vital Signs | VSTESTCD, VSORRES, VSDTC |
+| **AE** | Adverse Events | AETERM, AESTDTC, AEENDTC, AESEV |
+| **CM** | Concomitant Medications | CMTRT, CMDOSE, CMSTDTC |
+| **MH** | Medical History | MHTERM, MHSTDTC |
+| **LB** | Laboratory Tests | LBTESTCD, LBORRES, LBDTC |
+| **PE** | Physical Examination | PETEST, PEORRES, PEDTC |
+
+### SDTM Export 예시
+
+```bash
+# 지원 Domain 목록 조회
+curl "http://localhost:3000/api/cdisc/domains?study_id=study_001" \
+  -H "Authorization: Bearer $TOKEN"
+
+# DM Domain Export (JSON)
+curl "http://localhost:3000/api/cdisc/sdtm/dm?study_id=study_001&format=json" \
+  -H "Authorization: Bearer $TOKEN"
+
+# VS Domain Export (CSV)
+curl "http://localhost:3000/api/cdisc/sdtm/vs?study_id=study_001&format=csv" \
+  -H "Authorization: Bearer $TOKEN" \
+  -o vs_sdtm.csv
+```
+
+### ODM XML Export
+
+```bash
+# ODM XML 전체 Export
+curl "http://localhost:3000/api/cdisc/odm?study_id=study_001" \
+  -H "Authorization: Bearer $TOKEN" \
+  -o study_data.xml
+```
+
+---
+
+## 📊 리포트/대시보드 API 가이드
+
+### Dashboard Overview
+
+```bash
+curl "http://localhost:3000/api/reports/dashboard?study_id=study_001" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**응답 예시:**
+```json
+{
+  "study": { "id": "study_001", "title": "..." },
+  "metrics": {
+    "total_sites": 3,
+    "active_sites": 2,
+    "total_subjects": 15,
+    "enrolled_subjects": 10,
+    "crf_completion_rate": 75.5,
+    "open_queries": 5
+  },
+  "recent_activity": [...],
+  "alerts": [
+    { "type": "info", "message": "등록 진행률이 45%입니다." }
+  ]
+}
+```
+
+### Enrollment Summary
+
+```bash
+curl "http://localhost:3000/api/reports/enrollment/summary?study_id=study_001" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### CRF Progress
+
+```bash
+# Form별 진행률
+curl "http://localhost:3000/api/reports/crf/progress?study_id=study_001" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Missing CRF 리포트
+curl "http://localhost:3000/api/reports/crf/missing?study_id=study_001" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Query Statistics
+
+```bash
+# Query 통계
+curl "http://localhost:3000/api/reports/queries/stats?study_id=study_001" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Query Aging 분석
+curl "http://localhost:3000/api/reports/queries/aging?study_id=study_001" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Site Performance
+
+```bash
+curl "http://localhost:3000/api/reports/sites/performance?study_id=study_001" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
+## 📱 오프라인 지원 기능 가이드
+
+### 오프라인 기능 개요
+
+eCRF PWA는 Service Worker와 IndexedDB를 활용하여 오프라인 환경에서도 CRF 데이터 입력 및 조회가 가능합니다.
+
+### 지원 기능
+
+| 기능 | 오프라인 지원 | 설명 |
+|------|:------------:|------|
+| CRF 데이터 조회 | ✅ | 캐시된 데이터 조회 |
+| CRF 데이터 입력 | ✅ | 로컬 저장 후 동기화 |
+| Query 조회 | ✅ | 캐시된 데이터 조회 |
+| Query 답변 | ✅ | 로컬 저장 후 동기화 |
+| 전자서명 | ⚠️ | 로컬 저장 (온라인 시 서버 검증) |
+| Export | ❌ | 온라인 필요 |
+
+### 오프라인 인디케이터
+
+- 화면 좌측 하단에 오프라인 상태 표시
+- 대기중인 변경사항 수 Badge 표시
+- 클릭 시 동기화 대시보드 열림
+
+### 동기화 대시보드
+
+동기화 대시보드에서 확인/관리 가능:
+
+1. **연결 상태**: 온라인/오프라인 상태
+2. **대기중 변경사항**: 동기화 대기 중인 데이터 수
+3. **충돌 항목**: 서버와 충돌된 데이터
+4. **실패 항목**: 동기화 실패한 데이터
+5. **캐시 통계**: 저장된 캐시 크기/항목 수
+6. **동기화 이력**: 최근 동기화 로그
+
+### 충돌 해결
+
+오프라인에서 수정한 데이터가 서버에서도 변경된 경우:
+
+1. **로컬 데이터 사용**: 내 변경사항으로 서버 덮어쓰기
+2. **서버 데이터 사용**: 서버 데이터로 로컬 변경 취소
+
+### 오프라인 데이터 다운로드
+
+오프라인 작업을 위해 사전에 데이터 다운로드:
+
+1. 동기화 대시보드 열기 (오프라인 인디케이터 클릭)
+2. "오프라인 데이터 다운로드" 버튼 클릭
+3. Study/Site/Subject/Visit/Form 정의 등 필요 데이터 캐시
+
+### 캐시 정리
+
+주기적으로 만료된 캐시 자동 정리 (1시간 간격)
+수동 정리: 동기화 대시보드 > "캐시 정리" 버튼
 
 ---
 
