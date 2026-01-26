@@ -28,11 +28,11 @@
 | 전자서명 | ✅ 완료 | CRF 완료/승인 서명, 비밀번호 확인 |
 | 대시보드 | ✅ 완료 | Study/Site/Subject/Query 통계 |
 
-### 🔄 Phase 2: 고급 기능 (진행 예정)
+### 🔄 Phase 2: 고급 기능 (진행 중)
 
 | 기능 | 상태 | 설명 |
 |------|------|------|
-| 고급 Edit Check | ⏳ 대기중 | Cross-Visit, 의학적 논리 검증 엔진 |
+| 고급 Edit Check | ✅ 완료 | Cross-Field 검증, Range 검증, Cloudflare 호환 조건 평가기 |
 | Data Lock/Freeze | ⏳ 대기중 | Subject/Visit/CRF 레벨 데이터 잠금 |
 | Data Export | ⏳ 대기중 | CSV/Excel Export, CDISC 포맷 |
 | 리포트/대시보드 강화 | ⏳ 대기중 | 등록 현황, Query 통계, 진행률 |
@@ -217,6 +217,17 @@ Study (임상시험)
 | POST | `/api/signatures` | 전자서명 생성 |
 | GET | `/api/signatures/crf/:crfInstanceId` | CRF 서명 조회 |
 
+### Edit Check API
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/api/edit-checks/presets` | 프리셋 규칙 목록 조회 |
+| GET | `/api/edit-checks/rules?studyId=` | 규칙 목록 조회 |
+| GET | `/api/edit-checks/rules/:id` | 규칙 상세 조회 |
+| POST | `/api/edit-checks/rules` | 규칙 생성 (ADMIN/DM) |
+| PUT | `/api/edit-checks/rules/:id` | 규칙 수정 (ADMIN/DM) |
+| DELETE | `/api/edit-checks/rules/:id` | 규칙 비활성화 (ADMIN/DM) |
+| POST | `/api/edit-checks/execute` | CRF 검증 실행 |
+
 ### Audit API
 | Method | Path | 설명 |
 |--------|------|------|
@@ -243,14 +254,16 @@ webapp/
 │   │   ├── subjects.ts        # Subject API
 │   │   ├── visits.ts          # Visit/CRF API
 │   │   ├── queries.ts         # Query API
-│   │   └── signatures.ts      # 전자서명 API
+│   │   ├── signatures.ts      # 전자서명 API
+│   │   └── editchecks.ts      # Edit Check API
 │   ├── middleware/
 │   │   ├── auth.ts            # 인증 미들웨어
 │   │   └── rbac.ts            # 권한 검증
 │   ├── services/
 │   │   ├── auth.service.ts    # 인증 서비스
 │   │   ├── audit.service.ts   # 감사 서비스
-│   │   └── validation.service.ts # 검증 서비스
+│   │   ├── validation.service.ts # 검증 서비스
+│   │   └── editcheck.service.ts # Edit Check 엔진
 │   ├── types/
 │   │   └── index.ts           # 공통 타입
 │   └── utils/
@@ -265,7 +278,9 @@ webapp/
 │   ├── manifest.json          # PWA 매니페스트
 │   └── icons/                 # PWA 아이콘
 ├── migrations/
-│   └── 0001_initial_schema.sql
+│   ├── 0001_initial_schema.sql
+│   ├── 0002_edit_check_rules.sql  # Edit Check 테이블
+│   └── 0003_fix_edit_check_results_fk.sql
 ├── seed.sql                   # 테스트 데이터
 ├── ecosystem.config.cjs       # PM2 설정
 ├── wrangler.jsonc             # Cloudflare 설정
@@ -385,9 +400,13 @@ npm run deploy
 - Audit Trail
 - Query Management
 - 전자서명
+- **고급 Edit Check 엔진** (Phase 2)
+  - RANGE, CROSS_FIELD, REQUIRED 규칙 지원
+  - Cloudflare Workers 호환 조건 평가기 (new Function() 없이)
+  - 자동 Query 생성 기능
+  - 결과 저장 및 이력 관리
 
 ### 다음 단계 🔄
-- 고급 Edit Check 엔진
 - Data Lock/Freeze 기능
 - Data Export (CSV/Excel)
 - 오프라인 지원
@@ -403,6 +422,84 @@ npm run deploy
 - [CDISC Standards](https://www.cdisc.org/standards) - 임상 데이터 표준
 - [Hono Documentation](https://hono.dev/) - Hono 프레임워크
 - [Cloudflare Workers](https://developers.cloudflare.com/workers/) - 엣지 컴퓨팅
+
+---
+
+---
+
+## 🔍 Edit Check 기능 가이드
+
+### Edit Check 규칙 타입
+
+| 타입 | 설명 | 예시 |
+|------|------|------|
+| **RANGE** | 값 범위 검증 | 수축기 혈압 60-200 mmHg |
+| **CROSS_FIELD** | 필드 간 논리 검증 | 수축기 > 이완기 혈압 |
+| **REQUIRED** | 필수 값 검증 | 필드 값이 비어있지 않음 |
+| **DATE_LOGIC** | 날짜 논리 검증 | 종료일 >= 시작일 |
+| **CONSISTENCY** | 일관성 검증 | 값 변경 범위 제한 |
+
+### 규칙 생성 예시
+
+```bash
+# RANGE 규칙 생성
+curl -X POST http://localhost:3000/api/edit-checks/rules \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "study_id": "study_001",
+    "rule_code": "VS_SBP_RANGE",
+    "rule_name": "수축기 혈압 범위 검사",
+    "rule_type": "RANGE",
+    "severity": "ERROR",
+    "target_form_code": "VS",
+    "target_field_code": "SYSBP",
+    "rule_definition": {"field": "SYSBP", "min": 60, "max": 200, "unit": "mmHg"},
+    "error_message_template": "Systolic BP ({value}) out of range",
+    "error_message_ko": "수축기 혈압이 범위를 벗어났습니다"
+  }'
+```
+
+### Edit Check 실행
+
+```bash
+# CRF에 대해 Edit Check 실행
+curl -X POST http://localhost:3000/api/edit-checks/execute \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "crf_instance_id": "crf_002",
+    "form_data": {"SYSBP": "250", "DIABP": "80"},
+    "execution_context": "MANUAL"
+  }'
+```
+
+### 응답 예시
+
+```json
+{
+  "message": "Edit checks executed successfully",
+  "summary": {
+    "totalRules": 4,
+    "totalChecks": 1,
+    "passed": 0,
+    "errors": 1,
+    "warnings": 0,
+    "info": 0
+  },
+  "results": [
+    {
+      "ruleId": "rule_xxx",
+      "ruleCode": "VS_SBP_RANGE",
+      "passed": false,
+      "severity": "ERROR",
+      "message": "수축기 혈압이 범위를 벗어났습니다",
+      "fieldCode": "SYSBP",
+      "fieldValue": "250"
+    }
+  ]
+}
+```
 
 ---
 
