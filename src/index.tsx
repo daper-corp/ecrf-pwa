@@ -18,6 +18,8 @@ import lockRoutes from './routes/locks';
 import exportRoutes from './routes/exports';
 import cdiscRoutes from './routes/cdisc';
 import reportRoutes from './routes/reports';
+import twofaRoutes from './routes/twofa';
+import notificationRoutes from './routes/notifications';
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -83,6 +85,12 @@ app.route('/api/cdisc', cdiscRoutes);
 
 // Reports & Dashboard API
 app.route('/api/reports', reportRoutes);
+
+// Two-Factor Authentication API
+app.route('/api/2fa', twofaRoutes);
+
+// Push Notifications API
+app.route('/api/notifications', notificationRoutes);
 
 // Audit Log API
 app.get('/api/audit/logs', async (c) => {
@@ -154,6 +162,7 @@ const htmlTemplate = (title: string, content: string) => `
     <title>${title} - eCRF</title>
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <link rel="stylesheet" href="/static/mobile.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
     <script>
@@ -289,8 +298,8 @@ app.get('/', (c) => {
       </div>
     </main>
 
-    <!-- Footer -->
-    <footer class="bg-white border-t mt-auto">
+    <!-- Footer (hidden on mobile) -->
+    <footer class="bg-white border-t mt-auto hidden md:block">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
         <div class="flex flex-col md:flex-row justify-between items-center text-sm text-gray-500">
           <p>eCRF PWA v2.0.0 - 21 CFR Part 11 준수 시스템</p>
@@ -301,6 +310,68 @@ app.get('/', (c) => {
         </div>
       </div>
     </footer>
+
+    <!-- Mobile Bottom Navigation -->
+    <nav class="mobile-nav" id="mobile-nav">
+      <button class="mobile-nav-item" onclick="navigateTo('dashboard')" data-view="dashboard">
+        <i class="fas fa-home"></i>
+        <span>홈</span>
+      </button>
+      <button class="mobile-nav-item" onclick="navigateTo('studies')" data-view="studies">
+        <i class="fas fa-flask"></i>
+        <span>Study</span>
+      </button>
+      <button class="mobile-nav-item" onclick="navigateTo('subjects')" data-view="subjects">
+        <i class="fas fa-users"></i>
+        <span>피험자</span>
+      </button>
+      <button class="mobile-nav-item" onclick="navigateTo('queries')" data-view="queries">
+        <i class="fas fa-question-circle"></i>
+        <span>Query</span>
+      </button>
+      <button class="mobile-nav-item" onclick="showMobileMenu()" data-view="more">
+        <i class="fas fa-bars"></i>
+        <span>더보기</span>
+      </button>
+    </nav>
+
+    <!-- Mobile Menu Overlay -->
+    <div id="mobile-menu-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-[60] hidden" onclick="closeMobileMenu()">
+      <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl p-6 transform transition-transform" onclick="event.stopPropagation()">
+        <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-6"></div>
+        <div class="grid grid-cols-3 gap-4">
+          <button onclick="navigateTo('reports'); closeMobileMenu();" class="flex flex-col items-center p-4 rounded-xl hover:bg-gray-100">
+            <i class="fas fa-chart-bar text-2xl text-blue-500 mb-2"></i>
+            <span class="text-sm">리포트</span>
+          </button>
+          <button onclick="navigateTo('exports'); closeMobileMenu();" class="flex flex-col items-center p-4 rounded-xl hover:bg-gray-100">
+            <i class="fas fa-download text-2xl text-green-500 mb-2"></i>
+            <span class="text-sm">Export</span>
+          </button>
+          <button onclick="navigateTo('audit'); closeMobileMenu();" class="flex flex-col items-center p-4 rounded-xl hover:bg-gray-100">
+            <i class="fas fa-history text-2xl text-purple-500 mb-2"></i>
+            <span class="text-sm">감사로그</span>
+          </button>
+          <button onclick="offline.showSyncDashboard(); closeMobileMenu();" class="flex flex-col items-center p-4 rounded-xl hover:bg-gray-100">
+            <i class="fas fa-sync text-2xl text-yellow-500 mb-2"></i>
+            <span class="text-sm">동기화</span>
+          </button>
+          <button onclick="showSettings(); closeMobileMenu();" class="flex flex-col items-center p-4 rounded-xl hover:bg-gray-100">
+            <i class="fas fa-cog text-2xl text-gray-500 mb-2"></i>
+            <span class="text-sm">설정</span>
+          </button>
+          <button onclick="logout(); closeMobileMenu();" class="flex flex-col items-center p-4 rounded-xl hover:bg-gray-100">
+            <i class="fas fa-sign-out-alt text-2xl text-red-500 mb-2"></i>
+            <span class="text-sm">로그아웃</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating Action Button -->
+    <button id="fab-button" class="fab hidden" onclick="showQuickActions()">
+      <i class="fas fa-plus"></i>
+    </button>
   `;
 
   return c.html(htmlTemplate('홈', content));

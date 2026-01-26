@@ -1,0 +1,803 @@
+/* eCRF PWA - Mobile Optimization Styles */
+/* Touch-friendly interfaces and responsive layouts */
+
+/* =====================================================
+   CSS VARIABLES
+   ===================================================== */
+:root {
+  --touch-target-min: 44px;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --border-radius: 8px;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+}
+
+/* =====================================================
+   BASE TOUCH OPTIMIZATIONS
+   ===================================================== */
+
+/* Prevent text selection on touch */
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Smooth touch scrolling */
+.touch-scroll {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+}
+
+/* Remove tap highlight on mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Ensure minimum touch target size */
+button, 
+a, 
+input[type="button"],
+input[type="submit"],
+.touch-target {
+  min-height: var(--touch-target-min);
+  min-width: var(--touch-target-min);
+}
+
+/* Active state for touch feedback */
+button:active,
+a:active,
+.touch-target:active {
+  opacity: 0.7;
+  transform: scale(0.98);
+  transition: var(--transition-fast);
+}
+
+/* =====================================================
+   RESPONSIVE HEADER
+   ===================================================== */
+
+/* Mobile header adjustments */
+@media (max-width: 640px) {
+  header .max-w-7xl {
+    padding-left: var(--spacing-md);
+    padding-right: var(--spacing-md);
+  }
+  
+  header h1 {
+    font-size: 1.125rem;
+  }
+  
+  /* Hide subtitle on mobile */
+  header .hidden.sm\:inline {
+    display: none !important;
+  }
+  
+  /* Stack auth section on very small screens */
+  #auth-section {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  
+  #auth-section > * {
+    margin: 2px;
+  }
+}
+
+/* =====================================================
+   MOBILE NAVIGATION
+   ===================================================== */
+
+/* Bottom navigation bar for mobile */
+.mobile-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  border-top: 1px solid #e5e7eb;
+  padding: var(--spacing-sm) 0;
+  padding-bottom: max(var(--spacing-sm), env(safe-area-inset-bottom));
+  z-index: 50;
+  box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+}
+
+@media (max-width: 768px) {
+  .mobile-nav {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+  }
+  
+  /* Add padding to main content to account for bottom nav */
+  main {
+    padding-bottom: 80px !important;
+  }
+}
+
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  color: #6b7280;
+  text-decoration: none;
+  border-radius: var(--border-radius);
+  transition: var(--transition-fast);
+  min-width: 64px;
+}
+
+.mobile-nav-item.active {
+  color: #2563eb;
+  background: #eff6ff;
+}
+
+.mobile-nav-item i {
+  font-size: 1.25rem;
+  margin-bottom: 2px;
+}
+
+.mobile-nav-item span {
+  font-size: 0.625rem;
+  font-weight: 500;
+}
+
+/* =====================================================
+   RESPONSIVE CARDS
+   ===================================================== */
+
+/* Card layouts */
+.card-grid {
+  display: grid;
+  gap: var(--spacing-md);
+}
+
+@media (min-width: 640px) {
+  .card-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .card-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Mobile card styles */
+.mobile-card {
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-sm);
+  padding: var(--spacing-md);
+  transition: var(--transition-normal);
+}
+
+.mobile-card:active {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* =====================================================
+   RESPONSIVE TABLES
+   ===================================================== */
+
+/* Mobile table scrolling */
+.table-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 calc(-1 * var(--spacing-md));
+  padding: 0 var(--spacing-md);
+}
+
+@media (max-width: 768px) {
+  /* Card-style table on mobile */
+  .responsive-table {
+    display: block;
+  }
+  
+  .responsive-table thead {
+    display: none;
+  }
+  
+  .responsive-table tbody {
+    display: block;
+  }
+  
+  .responsive-table tr {
+    display: block;
+    background: white;
+    margin-bottom: var(--spacing-sm);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-sm);
+    padding: var(--spacing-md);
+  }
+  
+  .responsive-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-sm) 0;
+    border-bottom: 1px solid #f3f4f6;
+  }
+  
+  .responsive-table td:last-child {
+    border-bottom: none;
+  }
+  
+  .responsive-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: #6b7280;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+  }
+}
+
+/* =====================================================
+   MOBILE FORMS
+   ===================================================== */
+
+/* Touch-friendly form controls */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="date"],
+input[type="time"],
+select,
+textarea {
+  font-size: 16px; /* Prevents iOS zoom on focus */
+  padding: 12px 16px;
+  border-radius: var(--border-radius);
+  border: 1px solid #d1d5db;
+  width: 100%;
+  transition: var(--transition-fast);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* Mobile form layout */
+@media (max-width: 640px) {
+  .form-row {
+    flex-direction: column;
+  }
+  
+  .form-row > * {
+    width: 100% !important;
+    margin-bottom: var(--spacing-md);
+  }
+}
+
+/* Large touch-friendly buttons */
+.btn-touch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 24px;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: var(--border-radius);
+  transition: var(--transition-fast);
+  min-height: 48px;
+}
+
+.btn-touch-primary {
+  background: #2563eb;
+  color: white;
+}
+
+.btn-touch-primary:active {
+  background: #1d4ed8;
+}
+
+.btn-touch-secondary {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.btn-touch-secondary:active {
+  background: #e5e7eb;
+}
+
+.btn-touch-danger {
+  background: #dc2626;
+  color: white;
+}
+
+.btn-touch-danger:active {
+  background: #b91c1c;
+}
+
+/* Full-width button on mobile */
+@media (max-width: 640px) {
+  .btn-mobile-full {
+    width: 100%;
+  }
+}
+
+/* =====================================================
+   MOBILE MODALS
+   ===================================================== */
+
+/* Full-screen modal on mobile */
+@media (max-width: 640px) {
+  .modal-content {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    overflow-y: auto;
+  }
+  
+  .modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: inherit;
+    padding-top: max(16px, env(safe-area-inset-top));
+  }
+  
+  .modal-footer {
+    position: sticky;
+    bottom: 0;
+    background: white;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+    border-top: 1px solid #e5e7eb;
+  }
+}
+
+/* =====================================================
+   SWIPE ACTIONS
+   ===================================================== */
+
+.swipe-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.swipe-content {
+  transition: transform var(--transition-normal);
+}
+
+.swipe-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.swipe-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  color: white;
+  font-weight: 600;
+}
+
+.swipe-action-edit {
+  background: #2563eb;
+}
+
+.swipe-action-delete {
+  background: #dc2626;
+}
+
+/* =====================================================
+   PULL TO REFRESH
+   ===================================================== */
+
+.pull-to-refresh {
+  position: relative;
+}
+
+.pull-to-refresh-indicator {
+  position: absolute;
+  top: -50px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  transition: var(--transition-normal);
+}
+
+.pull-to-refresh.pulling .pull-to-refresh-indicator {
+  opacity: 1;
+  top: 10px;
+}
+
+.pull-to-refresh.refreshing .pull-to-refresh-indicator i {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* =====================================================
+   FLOATING ACTION BUTTON (FAB)
+   ===================================================== */
+
+.fab {
+  position: fixed;
+  bottom: 80px; /* Above mobile nav */
+  right: 16px;
+  width: 56px;
+  height: 56px;
+  border-radius: 28px;
+  background: #2563eb;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+  transition: var(--transition-normal);
+  z-index: 40;
+}
+
+.fab:active {
+  transform: scale(0.95);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+}
+
+.fab i {
+  font-size: 1.5rem;
+}
+
+@media (min-width: 769px) {
+  .fab {
+    bottom: 24px;
+    right: 24px;
+  }
+}
+
+/* =====================================================
+   STATUS BAR SAFE AREA
+   ===================================================== */
+
+/* iOS safe area support */
+@supports (padding-top: env(safe-area-inset-top)) {
+  header {
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  .mobile-nav {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+}
+
+/* =====================================================
+   TOAST NOTIFICATIONS (Mobile optimized)
+   ===================================================== */
+
+#toast-container {
+  position: fixed;
+  bottom: 90px; /* Above mobile nav */
+  left: 16px;
+  right: 16px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (min-width: 769px) {
+  #toast-container {
+    bottom: 24px;
+    left: auto;
+    right: 24px;
+    width: 360px;
+  }
+}
+
+/* =====================================================
+   LOADING STATES
+   ===================================================== */
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 25%,
+    #e0e0e0 50%,
+    #f0f0f0 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+  border-radius: 4px;
+}
+
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton-text {
+  height: 16px;
+  margin-bottom: 8px;
+}
+
+.skeleton-title {
+  height: 24px;
+  width: 60%;
+  margin-bottom: 12px;
+}
+
+.skeleton-card {
+  height: 120px;
+  margin-bottom: 16px;
+}
+
+/* =====================================================
+   ACCESSIBILITY
+   ===================================================== */
+
+/* High contrast focus indicators */
+:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-primary: #1f2937;
+    --bg-secondary: #111827;
+    --text-primary: #f9fafb;
+    --text-secondary: #9ca3af;
+    --border-color: #374151;
+  }
+  
+  /* Note: Full dark mode styles would go here */
+}
+
+/* =====================================================
+   CRF FORM MOBILE OPTIMIZATIONS
+   ===================================================== */
+
+/* CRF field groups */
+.crf-field-group {
+  background: white;
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.crf-field-group-title {
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: var(--spacing-md);
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 2px solid #e5e7eb;
+}
+
+/* Mobile CRF navigation */
+.crf-nav-mobile {
+  display: none;
+  position: fixed;
+  bottom: 60px;
+  left: 0;
+  right: 0;
+  background: white;
+  border-top: 1px solid #e5e7eb;
+  padding: 8px 16px;
+  z-index: 45;
+}
+
+@media (max-width: 768px) {
+  .crf-nav-mobile {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+}
+
+.crf-nav-button {
+  padding: 10px 20px;
+  border-radius: var(--border-radius);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.crf-nav-prev {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.crf-nav-next {
+  background: #2563eb;
+  color: white;
+}
+
+.crf-nav-save {
+  background: #059669;
+  color: white;
+}
+
+/* Field validation mobile */
+.field-error-mobile {
+  background: #fef2f2;
+  border-left: 4px solid #dc2626;
+  padding: 12px;
+  margin-top: 8px;
+  border-radius: 0 var(--border-radius) var(--border-radius) 0;
+  font-size: 0.875rem;
+  color: #991b1b;
+}
+
+/* =====================================================
+   SUBJECT LIST MOBILE
+   ===================================================== */
+
+.subject-card-mobile {
+  background: white;
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.subject-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #eff6ff;
+  color: #2563eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.125rem;
+  flex-shrink: 0;
+}
+
+.subject-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.subject-id {
+  font-weight: 600;
+  color: #111827;
+}
+
+.subject-meta {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
+.subject-status {
+  flex-shrink: 0;
+}
+
+/* =====================================================
+   QUERY LIST MOBILE
+   ===================================================== */
+
+.query-card-mobile {
+  background: white;
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+  box-shadow: var(--shadow-sm);
+  border-left: 4px solid;
+}
+
+.query-card-mobile.priority-critical {
+  border-left-color: #dc2626;
+}
+
+.query-card-mobile.priority-major {
+  border-left-color: #f59e0b;
+}
+
+.query-card-mobile.priority-minor {
+  border-left-color: #3b82f6;
+}
+
+.query-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--spacing-sm);
+}
+
+.query-text {
+  font-size: 0.875rem;
+  color: #374151;
+  line-height: 1.5;
+}
+
+.query-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+/* =====================================================
+   LANDSCAPE ORIENTATION
+   ===================================================== */
+
+@media (orientation: landscape) and (max-height: 500px) {
+  /* Compact header in landscape */
+  header .h-16 {
+    height: 48px;
+  }
+  
+  /* Hide mobile nav in landscape */
+  .mobile-nav {
+    display: none;
+  }
+  
+  /* Adjust main content */
+  main {
+    padding-bottom: 16px !important;
+  }
+}
+
+/* =====================================================
+   PRINT STYLES
+   ===================================================== */
+
+@media print {
+  .mobile-nav,
+  .fab,
+  #toast-container,
+  .no-print {
+    display: none !important;
+  }
+  
+  .print-break-before {
+    page-break-before: always;
+  }
+  
+  .print-break-after {
+    page-break-after: always;
+  }
+}

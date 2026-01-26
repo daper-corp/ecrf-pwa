@@ -2727,6 +2727,788 @@
   }
 
   // =====================================================
+  // MOBILE UI SUPPORT
+  // =====================================================
+  const mobile = {
+    isMobile: () => window.innerWidth < 768,
+    isTouch: () => 'ontouchstart' in window || navigator.maxTouchPoints > 0,
+    
+    init() {
+      // Update mobile navigation active state
+      this.updateNavActive();
+      
+      // Setup touch gestures
+      this.setupTouchGestures();
+      
+      // Setup FAB visibility
+      this.setupFAB();
+      
+      // Handle orientation changes
+      window.addEventListener('orientationchange', () => this.handleOrientationChange());
+      window.addEventListener('resize', () => this.handleResize());
+      
+      // Prevent pull-to-refresh on Chrome mobile
+      document.body.style.overscrollBehavior = 'none';
+    },
+    
+    updateNavActive() {
+      const navItems = document.querySelectorAll('.mobile-nav-item');
+      navItems.forEach(item => {
+        item.classList.remove('active');
+        if (item.dataset.view === state.currentView) {
+          item.classList.add('active');
+        }
+      });
+    },
+    
+    setupTouchGestures() {
+      let touchStartY = 0;
+      let touchStartX = 0;
+      
+      document.addEventListener('touchstart', (e) => {
+        touchStartY = e.touches[0].clientY;
+        touchStartX = e.touches[0].clientX;
+      }, { passive: true });
+      
+      document.addEventListener('touchend', (e) => {
+        const touchEndY = e.changedTouches[0].clientY;
+        const touchEndX = e.changedTouches[0].clientX;
+        const diffY = touchStartY - touchEndY;
+        const diffX = touchStartX - touchEndX;
+        
+        // Swipe down to refresh (only at top of page)
+        if (diffY < -100 && window.scrollY === 0 && Math.abs(diffX) < 50) {
+          this.handlePullToRefresh();
+        }
+      }, { passive: true });
+    },
+    
+    handlePullToRefresh() {
+      if (state.currentView === 'dashboard') {
+        showToast('새로고침 중...', 'info');
+        loadDashboard();
+      }
+    },
+    
+    setupFAB() {
+      const fab = document.getElementById('fab-button');
+      if (!fab) return;
+      
+      // Show FAB based on context
+      this.updateFABVisibility();
+    },
+    
+    updateFABVisibility() {
+      const fab = document.getElementById('fab-button');
+      if (!fab) return;
+      
+      const showFABViews = ['site', 'subject', 'visit'];
+      if (showFABViews.includes(state.currentView) && state.token) {
+        fab.classList.remove('hidden');
+      } else {
+        fab.classList.add('hidden');
+      }
+    },
+    
+    handleOrientationChange() {
+      // Adjust layout after orientation change
+      setTimeout(() => {
+        this.updateNavActive();
+        this.updateFABVisibility();
+      }, 100);
+    },
+    
+    handleResize() {
+      this.updateFABVisibility();
+    },
+    
+    // Haptic feedback (if supported)
+    vibrate(pattern = [10]) {
+      if (navigator.vibrate) {
+        navigator.vibrate(pattern);
+      }
+    }
+  };
+
+  // Mobile menu functions (global)
+  function showMobileMenu() {
+    const overlay = document.getElementById('mobile-menu-overlay');
+    if (overlay) {
+      overlay.classList.remove('hidden');
+      mobile.vibrate();
+    }
+  }
+  window.showMobileMenu = showMobileMenu;
+
+  function closeMobileMenu() {
+    const overlay = document.getElementById('mobile-menu-overlay');
+    if (overlay) {
+      overlay.classList.add('hidden');
+    }
+  }
+  window.closeMobileMenu = closeMobileMenu;
+
+  function showQuickActions() {
+    mobile.vibrate();
+    
+    const actions = [];
+    
+    if (state.currentView === 'site' && state.currentSite) {
+      actions.push({ 
+        icon: 'fas fa-user-plus', 
+        label: '피험자 등록', 
+        action: () => showSubjectModal() 
+      });
+    }
+    
+    if (state.currentView === 'subject' && state.currentSubject) {
+      actions.push({ 
+        icon: 'fas fa-question-circle', 
+        label: 'Query 생성', 
+        action: () => showQueryModal() 
+      });
+    }
+    
+    if (state.currentView === 'visit' && state.currentVisit) {
+      actions.push({ 
+        icon: 'fas fa-save', 
+        label: 'CRF 저장', 
+        action: () => saveCRFData() 
+      });
+      actions.push({ 
+        icon: 'fas fa-check-circle', 
+        label: 'CRF 완료', 
+        action: () => completeCRF() 
+      });
+    }
+    
+    if (actions.length === 0) {
+      actions.push({ 
+        icon: 'fas fa-search', 
+        label: '피험자 검색', 
+        action: () => showSubjectSearch() 
+      });
+    }
+    
+    const actionsHtml = actions.map(a => `
+      <button onclick="${a.action.toString().includes('()') ? a.action.toString().replace('() =>', '').trim() : a.action.name + '()'}" 
+              class="flex items-center w-full p-4 hover:bg-gray-100 rounded-lg">
+        <i class="${a.icon} text-xl text-blue-500 mr-4 w-8"></i>
+        <span class="text-gray-700">${a.label}</span>
+      </button>
+    `).join('');
+    
+    showModal('빠른 작업', `<div class="space-y-2">${actionsHtml}</div>`, [
+      { label: '닫기', onclick: 'closeModal()' }
+    ]);
+  }
+  window.showQuickActions = showQuickActions;
+
+  function showSubjectSearch() {
+    showModal('피험자 검색', `
+      <div class="space-y-4">
+        <div class="relative">
+          <input type="text" id="subject-search-input" placeholder="피험자 번호 또는 이니셜 입력"
+                 class="w-full px-4 py-3 pl-12 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                 oninput="searchSubjects(this.value)">
+          <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+        </div>
+        <div id="subject-search-results" class="max-h-64 overflow-y-auto">
+          <p class="text-center text-gray-500 py-4">검색어를 입력하세요</p>
+        </div>
+      </div>
+    `, []);
+    
+    document.getElementById('subject-search-input')?.focus();
+  }
+  window.showSubjectSearch = showSubjectSearch;
+
+  async function searchSubjects(query) {
+    const resultsEl = document.getElementById('subject-search-results');
+    if (!resultsEl) return;
+    
+    if (!query || query.length < 2) {
+      resultsEl.innerHTML = '<p class="text-center text-gray-500 py-4">2글자 이상 입력하세요</p>';
+      return;
+    }
+    
+    resultsEl.innerHTML = '<p class="text-center text-gray-500 py-4"><i class="fas fa-spinner fa-spin"></i> 검색 중...</p>';
+    
+    try {
+      // Search across all sites in current study
+      const studyId = state.currentStudy?.id || state.studies[0]?.id;
+      if (!studyId) {
+        resultsEl.innerHTML = '<p class="text-center text-gray-500 py-4">Study를 선택하세요</p>';
+        return;
+      }
+      
+      const result = await api.get(`/studies/${studyId}/subjects?search=${encodeURIComponent(query)}`);
+      
+      if (result.subjects && result.subjects.length > 0) {
+        resultsEl.innerHTML = result.subjects.map(s => `
+          <button onclick="closeModal(); navigateTo('subject', { subjectId: '${s.id}' })"
+                  class="subject-card-mobile w-full text-left">
+            <div class="subject-avatar">${s.initials || s.subject_number?.slice(-2)}</div>
+            <div class="subject-info">
+              <div class="subject-id">${s.subject_number}</div>
+              <div class="subject-meta">Site: ${s.site_number || '-'}</div>
+            </div>
+            <div class="subject-status">${ui.getStatusBadge(s.status)}</div>
+          </button>
+        `).join('');
+      } else {
+        resultsEl.innerHTML = '<p class="text-center text-gray-500 py-4">검색 결과가 없습니다</p>';
+      }
+    } catch (error) {
+      resultsEl.innerHTML = '<p class="text-center text-red-500 py-4">검색 중 오류가 발생했습니다</p>';
+    }
+  }
+  window.searchSubjects = searchSubjects;
+
+  function showSettings() {
+    const user = state.user || {};
+    
+    showModal('설정', `
+      <div class="space-y-6">
+        <!-- User Info -->
+        <div class="p-4 bg-gray-50 rounded-xl">
+          <div class="flex items-center">
+            <div class="w-16 h-16 rounded-full bg-blue-500 text-white flex items-center justify-center text-xl font-bold mr-4">
+              ${ui.getInitials(user.name)}
+            </div>
+            <div>
+              <p class="font-semibold text-lg">${user.name || '사용자'}</p>
+              <p class="text-sm text-gray-500">${user.email || ''}</p>
+              <p class="text-xs text-blue-600">${ui.getRoleName(user.role)}</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Settings Options -->
+        <div class="space-y-2">
+          <button onclick="showChangePassword()" class="flex items-center justify-between w-full p-4 hover:bg-gray-50 rounded-xl">
+            <div class="flex items-center">
+              <i class="fas fa-key text-gray-400 w-8"></i>
+              <span>비밀번호 변경</span>
+            </div>
+            <i class="fas fa-chevron-right text-gray-400"></i>
+          </button>
+          
+          <button onclick="show2FASettings()" class="flex items-center justify-between w-full p-4 hover:bg-gray-50 rounded-xl">
+            <div class="flex items-center">
+              <i class="fas fa-shield-alt text-gray-400 w-8"></i>
+              <span>2단계 인증</span>
+            </div>
+            <div class="flex items-center">
+              <span class="text-xs ${user.twoFactorEnabled ? 'text-green-600 bg-green-100' : 'text-gray-500 bg-gray-100'} px-2 py-1 rounded-full mr-2">
+                ${user.twoFactorEnabled ? '활성화' : '비활성화'}
+              </span>
+              <i class="fas fa-chevron-right text-gray-400"></i>
+            </div>
+          </button>
+          
+          <button onclick="showNotificationSettings()" class="flex items-center justify-between w-full p-4 hover:bg-gray-50 rounded-xl">
+            <div class="flex items-center">
+              <i class="fas fa-bell text-gray-400 w-8"></i>
+              <span>알림 설정</span>
+            </div>
+            <i class="fas fa-chevron-right text-gray-400"></i>
+          </button>
+          
+          <button onclick="offline.showSyncDashboard(); closeModal();" class="flex items-center justify-between w-full p-4 hover:bg-gray-50 rounded-xl">
+            <div class="flex items-center">
+              <i class="fas fa-sync text-gray-400 w-8"></i>
+              <span>동기화 상태</span>
+            </div>
+            <i class="fas fa-chevron-right text-gray-400"></i>
+          </button>
+          
+          <button onclick="clearLocalData()" class="flex items-center justify-between w-full p-4 hover:bg-gray-50 rounded-xl text-red-600">
+            <div class="flex items-center">
+              <i class="fas fa-trash text-red-400 w-8"></i>
+              <span>로컬 데이터 삭제</span>
+            </div>
+          </button>
+        </div>
+        
+        <!-- App Info -->
+        <div class="text-center text-sm text-gray-500 pt-4 border-t">
+          <p>eCRF PWA v2.0.0</p>
+          <p>21 CFR Part 11 준수 시스템</p>
+        </div>
+      </div>
+    `, [
+      { label: '닫기', onclick: 'closeModal()' }
+    ]);
+  }
+  window.showSettings = showSettings;
+
+  function showChangePassword() {
+    closeModal();
+    setTimeout(() => {
+      showModal('비밀번호 변경', `
+        <form id="change-password-form" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">현재 비밀번호</label>
+            <input type="password" name="current_password" required
+                   class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">새 비밀번호</label>
+            <input type="password" name="new_password" required minlength="8"
+                   class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500">
+            <p class="text-xs text-gray-500 mt-1">최소 8자, 대소문자/숫자/특수문자 포함</p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">새 비밀번호 확인</label>
+            <input type="password" name="confirm_password" required
+                   class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500">
+          </div>
+        </form>
+      `, [
+        { label: '취소', onclick: 'closeModal()' },
+        { label: '변경', class: 'bg-blue-600 text-white', onclick: 'submitChangePassword()' }
+      ]);
+    }, 300);
+  }
+  window.showChangePassword = showChangePassword;
+
+  async function submitChangePassword() {
+    const form = document.getElementById('change-password-form');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    
+    if (data.new_password !== data.confirm_password) {
+      showToast('새 비밀번호가 일치하지 않습니다.', 'error');
+      return;
+    }
+    
+    try {
+      const result = await api.post('/auth/change-password', {
+        current_password: data.current_password,
+        new_password: data.new_password
+      });
+      
+      if (result.success) {
+        closeModal();
+        showToast('비밀번호가 변경되었습니다.', 'success');
+      }
+    } catch (error) {
+      showToast(error.error || '비밀번호 변경에 실패했습니다.', 'error');
+    }
+  }
+  window.submitChangePassword = submitChangePassword;
+
+  async function clearLocalData() {
+    if (!confirm('로컬에 저장된 모든 데이터를 삭제하시겠습니까?\n(서버 데이터는 영향 없음)')) {
+      return;
+    }
+    
+    // Clear IndexedDB
+    if (window.eCRFOfflineDB) {
+      await window.eCRFOfflineDB.clearCache();
+    }
+    
+    // Clear Service Worker caches
+    if ('caches' in window) {
+      const names = await caches.keys();
+      await Promise.all(names.map(name => caches.delete(name)));
+    }
+    
+    showToast('로컬 데이터가 삭제되었습니다.', 'success');
+    closeModal();
+  }
+  window.clearLocalData = clearLocalData;
+
+  // =====================================================
+  // 2FA SETTINGS
+  // =====================================================
+  async function show2FASettings() {
+    closeModal();
+    
+    try {
+      const status = await api.get('/2fa/status');
+      const isEnabled = status.data?.enabled;
+      
+      setTimeout(() => {
+        if (isEnabled) {
+          show2FADisableModal();
+        } else {
+          show2FASetupModal();
+        }
+      }, 300);
+    } catch (error) {
+      showToast('2FA 상태를 확인할 수 없습니다.', 'error');
+    }
+  }
+  window.show2FASettings = show2FASettings;
+
+  async function show2FASetupModal() {
+    showModal('2단계 인증 설정', `
+      <div class="space-y-6">
+        <div class="text-center">
+          <div class="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i class="fas fa-shield-alt text-blue-500 text-3xl"></i>
+          </div>
+          <h3 class="text-lg font-semibold">보안 강화</h3>
+          <p class="text-gray-600 text-sm mt-2">
+            2단계 인증(2FA)을 활성화하면 로그인 시 추가 인증이 필요합니다.
+          </p>
+        </div>
+        
+        <div class="p-4 bg-gray-50 rounded-xl">
+          <h4 class="font-medium mb-2">준비물</h4>
+          <ul class="text-sm text-gray-600 space-y-1">
+            <li><i class="fas fa-check text-green-500 mr-2"></i>Google Authenticator 또는 Authy 앱</li>
+            <li><i class="fas fa-check text-green-500 mr-2"></i>스마트폰</li>
+          </ul>
+        </div>
+        
+        <div id="2fa-setup-content">
+          <button onclick="start2FASetup()" class="btn-touch btn-touch-primary w-full">
+            <i class="fas fa-qrcode mr-2"></i>설정 시작
+          </button>
+        </div>
+      </div>
+    `, [
+      { label: '취소', onclick: 'closeModal()' }
+    ]);
+  }
+
+  async function start2FASetup() {
+    const contentEl = document.getElementById('2fa-setup-content');
+    if (!contentEl) return;
+    
+    contentEl.innerHTML = '<p class="text-center py-4"><i class="fas fa-spinner fa-spin"></i> 설정 중...</p>';
+    
+    try {
+      const result = await api.post('/2fa/setup', {});
+      
+      if (result.success) {
+        contentEl.innerHTML = `
+          <div class="space-y-4">
+            <div class="text-center">
+              <p class="text-sm text-gray-600 mb-4">인증 앱에서 QR 코드를 스캔하세요</p>
+              <img src="${result.data.qrCodeUrl}" alt="QR Code" class="mx-auto border rounded-lg">
+            </div>
+            
+            <div class="p-4 bg-gray-50 rounded-xl">
+              <p class="text-xs text-gray-500 mb-1">수동 입력 코드:</p>
+              <code class="text-sm font-mono break-all">${result.data.secret}</code>
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">인증 코드 (6자리)</label>
+              <input type="text" id="2fa-verify-code" maxlength="6" placeholder="000000"
+                     class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 text-center text-2xl tracking-widest"
+                     oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+            </div>
+            
+            <button onclick="verify2FACode()" class="btn-touch btn-touch-primary w-full">
+              <i class="fas fa-check mr-2"></i>인증 확인
+            </button>
+          </div>
+        `;
+      }
+    } catch (error) {
+      contentEl.innerHTML = `
+        <div class="text-center text-red-500 py-4">
+          <i class="fas fa-exclamation-circle text-2xl mb-2"></i>
+          <p>설정 중 오류가 발생했습니다.</p>
+        </div>
+      `;
+    }
+  }
+  window.start2FASetup = start2FASetup;
+
+  async function verify2FACode() {
+    const code = document.getElementById('2fa-verify-code')?.value;
+    
+    if (!code || code.length !== 6) {
+      showToast('6자리 인증 코드를 입력하세요.', 'warning');
+      return;
+    }
+    
+    try {
+      const result = await api.post('/2fa/verify', { code });
+      
+      if (result.success) {
+        closeModal();
+        showToast('2단계 인증이 활성화되었습니다!', 'success');
+        
+        // Show backup codes
+        setTimeout(() => {
+          showBackupCodesModal(result.data.backupCodes);
+        }, 500);
+      }
+    } catch (error) {
+      showToast(error.error || '인증에 실패했습니다.', 'error');
+    }
+  }
+  window.verify2FACode = verify2FACode;
+
+  function showBackupCodesModal(codes) {
+    showModal('백업 코드', `
+      <div class="space-y-4">
+        <div class="p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+          <p class="text-sm text-yellow-700">
+            <i class="fas fa-exclamation-triangle mr-2"></i>
+            이 코드들을 안전한 곳에 저장하세요. 인증 앱을 사용할 수 없을 때 필요합니다.
+          </p>
+        </div>
+        
+        <div class="grid grid-cols-2 gap-2 p-4 bg-gray-50 rounded-xl">
+          ${codes.map(code => `
+            <code class="text-center py-2 bg-white rounded border font-mono text-sm">${code}</code>
+          `).join('')}
+        </div>
+        
+        <button onclick="downloadBackupCodes()" class="btn-touch btn-touch-secondary w-full">
+          <i class="fas fa-download mr-2"></i>코드 다운로드
+        </button>
+      </div>
+    `, [
+      { label: '확인', class: 'bg-blue-600 text-white', onclick: 'closeModal()' }
+    ]);
+    
+    // Store codes temporarily for download
+    window._backupCodes = codes;
+  }
+
+  function downloadBackupCodes() {
+    const codes = window._backupCodes || [];
+    const content = `eCRF 2FA Backup Codes\n생성일: ${new Date().toLocaleDateString('ko-KR')}\n\n${codes.join('\n')}\n\n이 코드를 안전하게 보관하세요.`;
+    
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ecrf-backup-codes.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  window.downloadBackupCodes = downloadBackupCodes;
+
+  function show2FADisableModal() {
+    showModal('2단계 인증 비활성화', `
+      <div class="space-y-4">
+        <div class="p-4 bg-red-50 border border-red-200 rounded-xl">
+          <p class="text-sm text-red-700">
+            <i class="fas fa-exclamation-triangle mr-2"></i>
+            2단계 인증을 비활성화하면 계정 보안이 약해집니다.
+          </p>
+        </div>
+        
+        <form id="2fa-disable-form" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">현재 비밀번호</label>
+            <input type="password" name="password" required
+                   class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">인증 코드 (선택)</label>
+            <input type="text" name="code" maxlength="6" placeholder="000000"
+                   class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                   oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+          </div>
+        </form>
+      </div>
+    `, [
+      { label: '취소', onclick: 'closeModal()' },
+      { label: '비활성화', class: 'bg-red-600 text-white', onclick: 'disable2FA()' }
+    ]);
+  }
+
+  async function disable2FA() {
+    const form = document.getElementById('2fa-disable-form');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    
+    try {
+      const result = await api.post('/2fa/disable', {
+        password: data.password,
+        code: data.code || undefined
+      });
+      
+      if (result.success) {
+        closeModal();
+        showToast('2단계 인증이 비활성화되었습니다.', 'success');
+      }
+    } catch (error) {
+      showToast(error.error || '비활성화에 실패했습니다.', 'error');
+    }
+  }
+  window.disable2FA = disable2FA;
+
+  // =====================================================
+  // NOTIFICATION SETTINGS
+  // =====================================================
+  async function showNotificationSettings() {
+    closeModal();
+    
+    try {
+      const result = await api.get('/notifications/preferences');
+      const { subscribed, preferences } = result.data || {};
+      
+      setTimeout(() => {
+        showModal('알림 설정', `
+          <div class="space-y-6">
+            <!-- Push Notification Status -->
+            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+              <div>
+                <p class="font-medium">푸시 알림</p>
+                <p class="text-sm text-gray-500">브라우저 푸시 알림</p>
+              </div>
+              <button onclick="togglePushNotification(${!subscribed})" 
+                      class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${subscribed ? 'bg-blue-600' : 'bg-gray-300'}">
+                <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${subscribed ? 'translate-x-6' : 'translate-x-1'}"></span>
+              </button>
+            </div>
+            
+            <!-- Notification Types -->
+            <div class="space-y-3">
+              <h4 class="font-medium text-gray-700">알림 유형</h4>
+              
+              <label class="flex items-center justify-between p-3 bg-white border rounded-xl">
+                <div class="flex items-center">
+                  <i class="fas fa-question-circle text-blue-500 w-8"></i>
+                  <span>Query 알림</span>
+                </div>
+                <input type="checkbox" ${preferences?.query !== false ? 'checked' : ''} 
+                       onchange="updateNotificationPref('query', this.checked)"
+                       class="w-5 h-5 text-blue-600 rounded">
+              </label>
+              
+              <label class="flex items-center justify-between p-3 bg-white border rounded-xl">
+                <div class="flex items-center">
+                  <i class="fas fa-signature text-purple-500 w-8"></i>
+                  <span>서명 요청</span>
+                </div>
+                <input type="checkbox" ${preferences?.signature !== false ? 'checked' : ''} 
+                       onchange="updateNotificationPref('signature', this.checked)"
+                       class="w-5 h-5 text-blue-600 rounded">
+              </label>
+              
+              <label class="flex items-center justify-between p-3 bg-white border rounded-xl">
+                <div class="flex items-center">
+                  <i class="fas fa-lock text-yellow-500 w-8"></i>
+                  <span>Lock/Unlock 알림</span>
+                </div>
+                <input type="checkbox" ${preferences?.lock !== false ? 'checked' : ''} 
+                       onchange="updateNotificationPref('lock', this.checked)"
+                       class="w-5 h-5 text-blue-600 rounded">
+              </label>
+              
+              <label class="flex items-center justify-between p-3 bg-white border rounded-xl">
+                <div class="flex items-center">
+                  <i class="fas fa-cog text-gray-500 w-8"></i>
+                  <span>시스템 알림</span>
+                </div>
+                <input type="checkbox" ${preferences?.system !== false ? 'checked' : ''} 
+                       onchange="updateNotificationPref('system', this.checked)"
+                       class="w-5 h-5 text-blue-600 rounded">
+              </label>
+            </div>
+            
+            ${subscribed ? `
+              <button onclick="testPushNotification()" class="btn-touch btn-touch-secondary w-full">
+                <i class="fas fa-bell mr-2"></i>테스트 알림 보내기
+              </button>
+            ` : ''}
+          </div>
+        `, [
+          { label: '닫기', onclick: 'closeModal()' }
+        ]);
+      }, 300);
+    } catch (error) {
+      showToast('알림 설정을 불러올 수 없습니다.', 'error');
+    }
+  }
+  window.showNotificationSettings = showNotificationSettings;
+
+  async function togglePushNotification(enable) {
+    if (enable) {
+      // Request permission and subscribe
+      if (!('Notification' in window)) {
+        showToast('이 브라우저는 푸시 알림을 지원하지 않습니다.', 'error');
+        return;
+      }
+      
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        showToast('알림 권한이 거부되었습니다.', 'error');
+        return;
+      }
+      
+      try {
+        // Get VAPID public key
+        const keyResult = await api.get('/notifications/vapid-key');
+        const publicKey = keyResult.data?.publicKey;
+        
+        // Subscribe to push
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey)
+        });
+        
+        // Send subscription to server
+        await api.post('/notifications/subscribe', { subscription });
+        showToast('푸시 알림이 활성화되었습니다.', 'success');
+        showNotificationSettings(); // Refresh
+      } catch (error) {
+        showToast('푸시 알림 설정에 실패했습니다.', 'error');
+      }
+    } else {
+      // Unsubscribe
+      try {
+        await api.post('/notifications/unsubscribe', {});
+        showToast('푸시 알림이 비활성화되었습니다.', 'success');
+        showNotificationSettings(); // Refresh
+      } catch (error) {
+        showToast('설정 변경에 실패했습니다.', 'error');
+      }
+    }
+  }
+  window.togglePushNotification = togglePushNotification;
+
+  async function updateNotificationPref(type, enabled) {
+    try {
+      const result = await api.get('/notifications/preferences');
+      const currentPrefs = result.data?.preferences || {};
+      currentPrefs[type] = enabled;
+      
+      await api.put('/notifications/preferences', { preferences: currentPrefs });
+      showToast('설정이 저장되었습니다.', 'success');
+    } catch (error) {
+      showToast('설정 저장에 실패했습니다.', 'error');
+    }
+  }
+  window.updateNotificationPref = updateNotificationPref;
+
+  async function testPushNotification() {
+    try {
+      await api.post('/notifications/test', {});
+      showToast('테스트 알림이 전송되었습니다.', 'success');
+    } catch (error) {
+      showToast('알림 전송에 실패했습니다.', 'error');
+    }
+  }
+  window.testPushNotification = testPushNotification;
+
+  // Utility function for VAPID key conversion
+  function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
+
+  // =====================================================
   // INITIALIZATION
   // =====================================================
   function init() {
@@ -2735,6 +3517,9 @@
     
     // 오프라인 지원 초기화
     offline.init();
+    
+    // 모바일 UI 초기화
+    mobile.init();
     
     if (state.token && state.user) {
       navigateTo('dashboard');
