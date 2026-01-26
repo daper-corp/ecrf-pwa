@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ecrf-pwa",
+  "compatibility_date": "2026-01-26",
+  "pages_build_output_dir": "./dist",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  
+  // D1 Database - eCRF 데이터 저장
+  // 배포 전 아래 명령으로 데이터베이스 생성 필요:
+  // npx wrangler d1 create ecrf-production
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ecrf-production",
+      "database_id": "placeholder-will-be-replaced-after-create"
+    }
+  ]
+  
+  // KV Namespace (향후 세션/캐시용)
+  // "kv_namespaces": [
+  //   {
+  //     "binding": "KV",
+  //     "id": "your-kv-namespace-id"
+  //   }
+  // ],
+  
+  // R2 Bucket (향후 파일 저장용)
+  // "r2_buckets": [
+  //   {
+  //     "binding": "R2",
+  //     "bucket_name": "ecrf-files"
+  //   }
+  // ]
+}
