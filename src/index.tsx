@@ -8,6 +8,11 @@ import type { Bindings, Variables } from './types';
 import { authMiddleware } from './middleware/auth';
 import authRoutes from './routes/auth';
 import studyRoutes from './routes/studies';
+import siteRoutes from './routes/sites';
+import subjectRoutes from './routes/subjects';
+import visitRoutes from './routes/visits';
+import queryRoutes from './routes/queries';
+import signatureRoutes from './routes/signatures';
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -41,12 +46,75 @@ app.route('/api/auth', authRoutes);
 // Study API
 app.route('/api/studies', studyRoutes);
 
+// Site API (nested under studies)
+app.route('/api/studies/:studyId/sites', siteRoutes);
+app.route('/api/sites', siteRoutes);
+
+// Subject API (nested under sites)
+app.route('/api/sites/:siteId/subjects', subjectRoutes);
+app.route('/api/subjects', subjectRoutes);
+
+// Visit API (nested under subjects)
+app.route('/api/subjects/:subjectId/visits', visitRoutes);
+app.route('/api/visits', visitRoutes);
+
+// Query API
+app.route('/api/queries', queryRoutes);
+
+// Signature API
+app.route('/api/signatures', signatureRoutes);
+
+// Audit Log API
+app.get('/api/audit/logs', async (c) => {
+  const { getAuthUser } = await import('./middleware/auth');
+  const { hasPermission } = await import('./middleware/rbac');
+  
+  const user = getAuthUser(c);
+  if (!user) return c.json({ success: false, error: '인증이 필요합니다.' }, 401);
+  if (!hasPermission(user.role, 'VIEW_AUDIT')) {
+    return c.json({ success: false, error: '감사 로그 조회 권한이 없습니다.' }, 403);
+  }
+
+  const studyId = c.req.query('studyId');
+  const siteId = c.req.query('siteId');
+  const subjectId = c.req.query('subjectId');
+  const tableName = c.req.query('tableName');
+  const recordId = c.req.query('recordId');
+  const action = c.req.query('action');
+  const startDate = c.req.query('startDate');
+  const endDate = c.req.query('endDate');
+  const limit = parseInt(c.req.query('limit') || '100');
+  const offset = parseInt(c.req.query('offset') || '0');
+
+  let query = `SELECT * FROM audit_logs WHERE 1=1`;
+  const params: (string | number)[] = [];
+
+  if (studyId) { query += ` AND study_id = ?`; params.push(studyId); }
+  if (siteId) { query += ` AND site_id = ?`; params.push(siteId); }
+  if (subjectId) { query += ` AND subject_id = ?`; params.push(subjectId); }
+  if (tableName) { query += ` AND table_name = ?`; params.push(tableName); }
+  if (recordId) { query += ` AND record_id = ?`; params.push(recordId); }
+  if (action) { query += ` AND action = ?`; params.push(action); }
+  if (startDate) { query += ` AND timestamp >= ?`; params.push(startDate); }
+  if (endDate) { query += ` AND timestamp <= ?`; params.push(endDate); }
+
+  query += ` ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
+  params.push(limit, offset);
+
+  const logs = await c.env.DB.prepare(query).bind(...params).all();
+
+  return c.json({
+    success: true,
+    data: logs.results,
+  });
+});
+
 // Health Check
 app.get('/api/health', (c) => {
   return c.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    version: '1.0.0',
+    version: '2.0.0',
   });
 });
 
@@ -113,13 +181,15 @@ const htmlTemplate = (title: string, content: string) => `
 app.get('/', (c) => {
   const content = `
     <!-- Header -->
-    <header class="bg-white shadow-sm border-b">
+    <header class="bg-white shadow-sm border-b sticky top-0 z-40">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between items-center h-16">
           <div class="flex items-center">
-            <i class="fas fa-clipboard-list text-ecrf-blue text-2xl mr-3"></i>
-            <h1 class="text-xl font-bold text-gray-900">eCRF</h1>
-            <span class="ml-2 text-sm text-gray-500">Electronic Case Report Form</span>
+            <button onclick="navigateTo('dashboard')" class="flex items-center hover:opacity-80 transition">
+              <i class="fas fa-clipboard-list text-ecrf-blue text-2xl mr-3"></i>
+              <h1 class="text-xl font-bold text-gray-900">eCRF</h1>
+              <span class="ml-2 text-sm text-gray-500 hidden sm:inline">Electronic Case Report Form</span>
+            </button>
           </div>
           <div id="auth-section" class="flex items-center space-x-4">
             <!-- Auth buttons will be rendered by JS -->
@@ -128,8 +198,17 @@ app.get('/', (c) => {
       </div>
     </header>
 
+    <!-- Breadcrumb -->
+    <div class="bg-gray-50 border-b">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
+        <div id="breadcrumb" class="flex items-center text-sm">
+          <button class="text-ecrf-blue hover:underline" onclick="navigateTo('dashboard')">홈</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <!-- Login Section (shown when not authenticated) -->
       <div id="login-section" class="hidden">
         <div class="max-w-md mx-auto">
@@ -169,98 +248,22 @@ app.get('/', (c) => {
             </form>
             
             <div class="mt-6 text-center text-sm text-gray-500">
-              <p>테스트 계정: admin@ecrf.local / Test1234!</p>
+              <p>테스트 계정:</p>
+              <p class="font-mono text-xs mt-1">admin@ecrf.local / Test1234!</p>
+              <p class="font-mono text-xs">pi@hospital1.local / Test1234!</p>
+              <p class="font-mono text-xs">crc@hospital1.local / Test1234!</p>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Dashboard (shown when authenticated) -->
+      <!-- Dashboard Content (shown when authenticated) -->
       <div id="dashboard-section" class="hidden">
-        <!-- User Info -->
-        <div class="mb-6 bg-white rounded-lg shadow p-4">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center">
-              <div class="w-12 h-12 bg-ecrf-blue rounded-full flex items-center justify-center text-white text-lg font-bold">
-                <span id="user-initials">--</span>
-              </div>
-              <div class="ml-4">
-                <h3 id="user-name" class="font-semibold text-gray-900">사용자</h3>
-                <p id="user-role" class="text-sm text-gray-500">역할</p>
-              </div>
-            </div>
-            <div class="text-sm text-gray-500">
-              <span id="last-login">마지막 로그인: --</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Quick Stats -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div class="bg-white rounded-lg shadow p-6">
-            <div class="flex items-center">
-              <div class="p-3 bg-blue-100 rounded-full">
-                <i class="fas fa-flask text-ecrf-blue text-xl"></i>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm text-gray-500">임상시험</p>
-                <p id="stat-studies" class="text-2xl font-bold text-gray-900">0</p>
-              </div>
-            </div>
-          </div>
-          
-          <div class="bg-white rounded-lg shadow p-6">
-            <div class="flex items-center">
-              <div class="p-3 bg-green-100 rounded-full">
-                <i class="fas fa-hospital text-ecrf-green text-xl"></i>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm text-gray-500">연구기관</p>
-                <p id="stat-sites" class="text-2xl font-bold text-gray-900">0</p>
-              </div>
-            </div>
-          </div>
-          
-          <div class="bg-white rounded-lg shadow p-6">
-            <div class="flex items-center">
-              <div class="p-3 bg-purple-100 rounded-full">
-                <i class="fas fa-users text-purple-600 text-xl"></i>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm text-gray-500">피험자</p>
-                <p id="stat-subjects" class="text-2xl font-bold text-gray-900">0</p>
-              </div>
-            </div>
-          </div>
-          
-          <div class="bg-white rounded-lg shadow p-6">
-            <div class="flex items-center">
-              <div class="p-3 bg-yellow-100 rounded-full">
-                <i class="fas fa-question-circle text-ecrf-yellow text-xl"></i>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm text-gray-500">미결 Query</p>
-                <p id="stat-queries" class="text-2xl font-bold text-gray-900">0</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Studies List -->
-        <div class="bg-white rounded-lg shadow">
-          <div class="px-6 py-4 border-b flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-gray-900">
-              <i class="fas fa-flask mr-2"></i> 임상시험 목록
-            </h2>
-            <button id="btn-new-study" class="hidden bg-ecrf-blue text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm">
-              <i class="fas fa-plus mr-1"></i> 새 임상시험
-            </button>
-          </div>
-          <div id="studies-list" class="divide-y">
-            <div class="p-8 text-center text-gray-500">
-              <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-              <p>데이터를 불러오는 중...</p>
-            </div>
+        <div id="main-content">
+          <!-- Dynamic content will be rendered by JS -->
+          <div class="p-8 text-center text-gray-500">
+            <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+            <p>로딩 중...</p>
           </div>
         </div>
       </div>
@@ -270,7 +273,7 @@ app.get('/', (c) => {
     <footer class="bg-white border-t mt-auto">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
         <div class="flex flex-col md:flex-row justify-between items-center text-sm text-gray-500">
-          <p>eCRF PWA v1.0.0 - 21 CFR Part 11 준수 시스템</p>
+          <p>eCRF PWA v2.0.0 - 21 CFR Part 11 준수 시스템</p>
           <p class="mt-2 md:mt-0">
             <i class="fas fa-shield-alt mr-1"></i> 
             데이터 무결성 및 감사 추적 지원

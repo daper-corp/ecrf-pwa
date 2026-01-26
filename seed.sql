@@ -5,16 +5,16 @@
 -- =====================================================
 -- 1. TEST USERS (테스트 사용자)
 -- =====================================================
--- 비밀번호: Test1234! (bcrypt hash)
+-- 비밀번호: Test1234! (PBKDF2-SHA256 hash, 100000 iterations)
 -- 실제 운영 시 반드시 변경 필요
 
 INSERT OR IGNORE INTO users (id, email, password_hash, name, role, status, created_at) VALUES
-    ('usr_admin_001', 'admin@ecrf.local', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X.VQ6YjKJ1.1C1C1C', 'System Admin', 'ADMIN', 'ACTIVE', CURRENT_TIMESTAMP),
-    ('usr_pi_001', 'pi@hospital1.local', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X.VQ6YjKJ1.1C1C1C', 'Dr. Kim (PI)', 'PI', 'ACTIVE', CURRENT_TIMESTAMP),
-    ('usr_subinv_001', 'subinv@hospital1.local', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X.VQ6YjKJ1.1C1C1C', 'Dr. Lee (Sub-Investigator)', 'SUB_INV', 'ACTIVE', CURRENT_TIMESTAMP),
-    ('usr_crc_001', 'crc@hospital1.local', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X.VQ6YjKJ1.1C1C1C', 'Nurse Park (CRC)', 'CRC', 'ACTIVE', CURRENT_TIMESTAMP),
-    ('usr_cra_001', 'cra@sponsor.local', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X.VQ6YjKJ1.1C1C1C', 'Monitor Choi (CRA)', 'CRA', 'ACTIVE', CURRENT_TIMESTAMP),
-    ('usr_dm_001', 'dm@sponsor.local', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X.VQ6YjKJ1.1C1C1C', 'Data Manager Jung', 'DM', 'ACTIVE', CURRENT_TIMESTAMP);
+    ('usr_admin_001', 'admin@ecrf.local', '021fe56545cd3d68e528eecf37e0e207:cc46b203aedc2662560430f6eb568b47568e861bfe26aeb269c5464a62973467', 'System Admin', 'ADMIN', 'ACTIVE', CURRENT_TIMESTAMP),
+    ('usr_pi_001', 'pi@hospital1.local', '021fe56545cd3d68e528eecf37e0e207:cc46b203aedc2662560430f6eb568b47568e861bfe26aeb269c5464a62973467', 'Dr. Kim (PI)', 'PI', 'ACTIVE', CURRENT_TIMESTAMP),
+    ('usr_subinv_001', 'subinv@hospital1.local', '021fe56545cd3d68e528eecf37e0e207:cc46b203aedc2662560430f6eb568b47568e861bfe26aeb269c5464a62973467', 'Dr. Lee (Sub-Investigator)', 'SUB_INV', 'ACTIVE', CURRENT_TIMESTAMP),
+    ('usr_crc_001', 'crc@hospital1.local', '021fe56545cd3d68e528eecf37e0e207:cc46b203aedc2662560430f6eb568b47568e861bfe26aeb269c5464a62973467', 'Nurse Park (CRC)', 'CRC', 'ACTIVE', CURRENT_TIMESTAMP),
+    ('usr_cra_001', 'cra@sponsor.local', '021fe56545cd3d68e528eecf37e0e207:cc46b203aedc2662560430f6eb568b47568e861bfe26aeb269c5464a62973467', 'Monitor Choi (CRA)', 'CRA', 'ACTIVE', CURRENT_TIMESTAMP),
+    ('usr_dm_001', 'dm@sponsor.local', '021fe56545cd3d68e528eecf37e0e207:cc46b203aedc2662560430f6eb568b47568e861bfe26aeb269c5464a62973467', 'Data Manager Jung', 'DM', 'ACTIVE', CURRENT_TIMESTAMP);
 
 -- =====================================================
 -- 2. TEST STUDY (테스트 임상시험)
