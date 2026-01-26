@@ -33,8 +33,9 @@
 | 기능 | 상태 | 설명 |
 |------|------|------|
 | 고급 Edit Check | ✅ 완료 | Cross-Field 검증, Range 검증, Cloudflare 호환 조건 평가기 |
-| Data Lock/Freeze | ⏳ 대기중 | Subject/Visit/CRF 레벨 데이터 잠금 |
-| Data Export | ⏳ 대기중 | CSV/Excel Export, CDISC 포맷 |
+| Data Lock/Freeze | ✅ 완료 | Subject/Visit/Site/Study 레벨 데이터 잠금, Lock 이력 관리 |
+| Data Export (CSV/JSON) | ✅ 완료 | Subject, CRF Data, Query, Audit Trail Export |
+| CDISC Export | ⏳ 대기중 | SDTM/ODM XML 포맷 Export |
 | 리포트/대시보드 강화 | ⏳ 대기중 | 등록 현황, Query 통계, 진행률 |
 
 ### 🔄 Phase 3: PWA 고도화 (진행 예정)
@@ -228,6 +229,26 @@ Study (임상시험)
 | DELETE | `/api/edit-checks/rules/:id` | 규칙 비활성화 (ADMIN/DM) |
 | POST | `/api/edit-checks/execute` | CRF 검증 실행 |
 
+### Data Lock API
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/api/locks` | Lock 목록 조회 |
+| GET | `/api/locks/stats` | Lock 통계 조회 |
+| GET | `/api/locks/status/:recordType/:recordId` | Lock 상태 확인 |
+| GET | `/api/locks/history/:recordType/:recordId` | Lock 이력 조회 |
+| POST | `/api/locks` | Lock 생성 (DM 권한) |
+| POST | `/api/locks/:id/unlock` | Unlock (DM 권한) |
+
+### Data Export API
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/api/exports/summary?study_id=` | Export 가능 데이터 요약 |
+| GET | `/api/exports/subjects?study_id=&format=` | Subject 데이터 Export |
+| GET | `/api/exports/crf-data?study_id=&format=` | CRF 데이터 Export (Long) |
+| GET | `/api/exports/crf-wide?study_id=&form_code=&format=` | CRF 데이터 Export (Wide) |
+| GET | `/api/exports/queries?study_id=&format=` | Query Export |
+| GET | `/api/exports/audit-trail?study_id=&format=` | Audit Trail Export |
+
 ### Audit API
 | Method | Path | 설명 |
 |--------|------|------|
@@ -255,7 +276,9 @@ webapp/
 │   │   ├── visits.ts          # Visit/CRF API
 │   │   ├── queries.ts         # Query API
 │   │   ├── signatures.ts      # 전자서명 API
-│   │   └── editchecks.ts      # Edit Check API
+│   │   ├── editchecks.ts      # Edit Check API
+│   │   ├── locks.ts           # Data Lock API
+│   │   └── exports.ts         # Data Export API
 │   ├── middleware/
 │   │   ├── auth.ts            # 인증 미들웨어
 │   │   └── rbac.ts            # 권한 검증
@@ -280,7 +303,8 @@ webapp/
 ├── migrations/
 │   ├── 0001_initial_schema.sql
 │   ├── 0002_edit_check_rules.sql  # Edit Check 테이블
-│   └── 0003_fix_edit_check_results_fk.sql
+│   ├── 0003_fix_edit_check_results_fk.sql
+│   └── 0004_add_export_action.sql # Export 감사 로그 액션
 ├── seed.sql                   # 테스트 데이터
 ├── ecosystem.config.cjs       # PM2 설정
 ├── wrangler.jsonc             # Cloudflare 설정
@@ -405,13 +429,20 @@ npm run deploy
   - Cloudflare Workers 호환 조건 평가기 (new Function() 없이)
   - 자동 Query 생성 기능
   - 결과 저장 및 이력 관리
+- **Data Lock/Freeze** (Phase 2)
+  - SUBJECT, VISIT, SITE, STUDY 레벨 잠금
+  - Lock/Unlock 감사 추적
+  - Lock 이력 및 통계
+- **Data Export** (Phase 2)
+  - CSV/JSON 포맷 지원
+  - Subject, CRF Data (Long/Wide), Query, Audit Trail Export
+  - Export 활동 감사 로깅
 
 ### 다음 단계 🔄
-- Data Lock/Freeze 기능
-- Data Export (CSV/Excel)
+- CDISC 포맷 Export (SDTM/ODM XML)
+- 리포트/대시보드 강화
 - 오프라인 지원
 - 모바일 최적화
-- CDISC 표준 지원
 
 ---
 
@@ -496,6 +527,107 @@ curl -X POST http://localhost:3000/api/edit-checks/execute \
       "message": "수축기 혈압이 범위를 벗어났습니다",
       "fieldCode": "SYSBP",
       "fieldValue": "250"
+    }
+  ]
+}
+```
+
+---
+
+## 🔐 Data Lock/Freeze 기능 가이드
+
+### Lock 타입
+
+| 타입 | 설명 |
+|------|------|
+| **SUBJECT** | 피험자 레벨 잠금 - 해당 Subject의 모든 데이터 수정 불가 |
+| **VISIT** | 방문 레벨 잠금 - 해당 Visit의 모든 CRF 수정 불가 |
+| **SITE** | 기관 레벨 잠금 - 해당 Site의 모든 Subject 수정 불가 |
+| **STUDY** | 임상시험 레벨 잠금 - 전체 Study 데이터 수정 불가 |
+
+### Lock 생성 예시
+
+```bash
+# Subject Lock (DM 역할 필요)
+curl -X POST http://localhost:3000/api/locks \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "lock_type": "SUBJECT",
+    "record_id": "subj_001",
+    "lock_reason": "데이터 검토 완료"
+  }'
+```
+
+### Lock 해제 예시
+
+```bash
+# Unlock
+curl -X POST http://localhost:3000/api/locks/{lock_id}/unlock \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "unlock_reason": "검토 완료, 데이터 수정 허용"
+  }'
+```
+
+---
+
+## 📤 Data Export 기능 가이드
+
+### Export 가능 데이터
+
+| 타입 | 설명 | 포맷 |
+|------|------|------|
+| **subjects** | 피험자 등록 데이터 | CSV, JSON |
+| **crf-data** | CRF 데이터 (Long format) | CSV, JSON |
+| **crf-wide** | CRF 데이터 (Wide format by Form) | CSV, JSON |
+| **queries** | Query 데이터 | CSV, JSON |
+| **audit-trail** | Audit Trail | CSV, JSON |
+
+### Export 요약 조회
+
+```bash
+curl "http://localhost:3000/api/exports/summary?study_id=study_001" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Subject Export
+
+```bash
+# JSON 포맷
+curl "http://localhost:3000/api/exports/subjects?study_id=study_001&format=json" \
+  -H "Authorization: Bearer $TOKEN"
+
+# CSV 포맷 (파일 다운로드)
+curl "http://localhost:3000/api/exports/subjects?study_id=study_001&format=csv" \
+  -H "Authorization: Bearer $TOKEN" \
+  -o subjects_export.csv
+```
+
+### CRF Data Export (Wide format)
+
+```bash
+# VS Form의 Wide format Export
+curl "http://localhost:3000/api/exports/crf-wide?study_id=study_001&form_code=VS&format=csv" \
+  -H "Authorization: Bearer $TOKEN" \
+  -o vs_data.csv
+```
+
+### Export 응답 예시 (JSON)
+
+```json
+{
+  "export_date": "2026-01-26T09:47:59.262Z",
+  "study_id": "study_001",
+  "total_records": 3,
+  "data": [
+    {
+      "subject_number": "01-001",
+      "screening_number": "SCR-001",
+      "status": "ENROLLED",
+      "site_number": "01",
+      "site_name": "Seoul University Hospital"
     }
   ]
 }
