@@ -17,6 +17,7 @@ import editCheckRoutes from './routes/editchecks';
 import lockRoutes from './routes/locks';
 import exportRoutes from './routes/exports';
 import cdiscRoutes from './routes/cdisc';
+import reportRoutes from './routes/reports';
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -79,6 +80,9 @@ app.route('/api/exports', exportRoutes);
 
 // CDISC Export API (ODM/SDTM)
 app.route('/api/cdisc', cdiscRoutes);
+
+// Reports & Dashboard API
+app.route('/api/reports', reportRoutes);
 
 // Audit Log API
 app.get('/api/audit/logs', async (c) => {
