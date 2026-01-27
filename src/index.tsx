@@ -645,10 +645,11 @@ const htmlTemplate = (title: string, content: string) => `
       .modal {
         background: #fff;
         border-radius: 8px;
-        max-width: 500px;
+        max-width: 560px;
         width: 90%;
         max-height: 90vh;
-        overflow: hidden;
+        display: flex;
+        flex-direction: column;
         box-shadow: 0 8px 32px rgba(0,0,0,0.2);
       }
       
@@ -658,6 +659,7 @@ const htmlTemplate = (title: string, content: string) => `
         display: flex;
         align-items: center;
         justify-content: space-between;
+        flex-shrink: 0;
       }
       
       .modal-title {
@@ -676,7 +678,12 @@ const htmlTemplate = (title: string, content: string) => `
       }
       .modal-close:hover { background: var(--bg-tertiary); }
       
-      .modal-body { padding: 20px; }
+      .modal-body { 
+        padding: 20px; 
+        overflow-y: auto;
+        flex: 1;
+        max-height: calc(90vh - 130px);
+      }
       
       .modal-footer {
         padding: 16px 20px;
@@ -685,6 +692,7 @@ const htmlTemplate = (title: string, content: string) => `
         justify-content: flex-end;
         gap: 8px;
         background: var(--bg-secondary);
+        flex-shrink: 0;
       }
       
       /* ===== Empty State ===== */
