@@ -2135,12 +2135,20 @@
     `;
   }
 
+  // =====================================================
+  // FIELD OPTIONS BUILDER (SELECT, RADIO, CHECKBOX)
+  // =====================================================
+  let fieldOptionsData = [];
+
   function showNewFieldModal(studyId, formId) {
     const form = state.currentForm;
     const existingFields = form?.fields || [];
     const maxOrder = existingFields.length > 0 
       ? Math.max(...existingFields.map(f => f.field_order || 0)) 
       : 0;
+
+    // Reset options data
+    fieldOptionsData = [];
 
     showModal('필드 추가', `
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
@@ -2163,13 +2171,49 @@
           ${FIELD_TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
         </select>
       </div>
+      
+      <!-- Options Builder for SELECT, RADIO, CHECKBOX -->
       <div id="field-options-container" style="display: none;">
         <div class="form-group">
-          <label class="form-label">선택 옵션</label>
-          <textarea class="form-input" id="field-options" rows="4" placeholder="각 줄에 하나씩 입력 (형식: 값|라벨)&#10;예:&#10;M|남성&#10;F|여성&#10;OTHER|기타"></textarea>
-          <small style="color: var(--text-muted);">값|라벨 형식으로 각 줄에 하나씩 입력하세요.</small>
+          <label class="form-label">
+            선택 옵션 
+            <span style="font-weight: normal; color: var(--text-muted); font-size: 11px;">(최소 1개 이상)</span>
+          </label>
+          
+          <!-- Options List -->
+          <div id="options-list" style="margin-bottom: 12px;"></div>
+          
+          <!-- Add Option Form -->
+          <div style="display: flex; gap: 8px; align-items: flex-end; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+            <div style="flex: 1;">
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">값 (저장용)</label>
+              <input type="text" class="form-input" id="new-option-value" placeholder="예: M, 1, YES" style="padding: 8px; font-size: 13px;">
+            </div>
+            <div style="flex: 2;">
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">라벨 (표시용)</label>
+              <input type="text" class="form-input" id="new-option-label" placeholder="예: 남성, 예, 동의함" style="padding: 8px; font-size: 13px;" onkeypress="if(event.key==='Enter'){event.preventDefault();addFieldOption();}">
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="addFieldOption()" style="height: 36px; padding: 0 12px;">
+              <i class="fas fa-plus"></i> 추가
+            </button>
+          </div>
+          
+          <!-- Quick Templates -->
+          <div style="margin-top: 12px;">
+            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px;">빠른 템플릿:</label>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="applyOptionTemplate('yesno')" style="font-size: 11px; padding: 4px 8px;">예/아니오</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="applyOptionTemplate('gender')" style="font-size: 11px; padding: 4px 8px;">성별</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="applyOptionTemplate('severity')" style="font-size: 11px; padding: 4px 8px;">심각도</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="applyOptionTemplate('frequency')" style="font-size: 11px; padding: 4px 8px;">빈도</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="applyOptionTemplate('agreement')" style="font-size: 11px; padding: 4px 8px;">동의 여부</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="applyOptionTemplate('race')" style="font-size: 11px; padding: 4px 8px;">인종</button>
+            </div>
+          </div>
         </div>
       </div>
+      
+      <!-- Number Range -->
       <div id="field-number-container" style="display: none;">
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
           <div class="form-group">
@@ -2182,6 +2226,7 @@
           </div>
         </div>
       </div>
+      
       <div class="form-group">
         <label class="form-label" style="display: flex; align-items: center; gap: 8px;">
           <input type="checkbox" id="field-required" checked> 필수 입력
@@ -2207,13 +2252,334 @@
     const numberContainer = document.getElementById('field-number-container');
     
     if (optionsContainer) {
-      optionsContainer.style.display = ['SELECT', 'RADIO', 'CHECKBOX'].includes(fieldType) ? 'block' : 'none';
+      const showOptions = ['SELECT', 'RADIO', 'CHECKBOX', 'MULTI_SELECT'].includes(fieldType);
+      optionsContainer.style.display = showOptions ? 'block' : 'none';
+      if (showOptions) {
+        renderOptionsList();
+      }
     }
     if (numberContainer) {
       numberContainer.style.display = fieldType === 'NUMBER' ? 'block' : 'none';
     }
   }
   window.toggleFieldOptions = toggleFieldOptions;
+
+  function renderOptionsList() {
+    const container = document.getElementById('options-list');
+    if (!container) return;
+
+    if (fieldOptionsData.length === 0) {
+      container.innerHTML = `
+        <div style="padding: 16px; text-align: center; color: var(--text-muted); background: var(--bg-tertiary); border-radius: 8px; border: 2px dashed var(--border);">
+          <i class="fas fa-list-ul" style="font-size: 24px; margin-bottom: 8px; display: block; opacity: 0.5;"></i>
+          <span style="font-size: 13px;">아래에서 옵션을 추가하세요</span>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = `
+      <div style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden;" id="options-sortable-list">
+        ${fieldOptionsData.map((opt, idx) => `
+          <div class="option-item" style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: ${idx % 2 === 0 ? '#fff' : 'var(--bg-secondary)'}; border-bottom: 1px solid var(--border-light); transition: all 0.2s;" data-index="${idx}" draggable="true" ondragstart="handleOptionDragStart(event, ${idx})" ondragover="handleOptionDragOver(event)" ondrop="handleOptionDrop(event, ${idx})" ondragend="handleOptionDragEnd(event)">
+            <span style="color: var(--text-muted); cursor: grab;" class="drag-handle" title="드래그하여 순서 변경">
+              <i class="fas fa-grip-vertical"></i>
+            </span>
+            <span style="color: var(--text-muted); font-size: 11px; min-width: 20px;">${idx + 1}</span>
+            <div style="flex: 1; display: flex; gap: 8px; align-items: center;">
+              <code style="background: var(--bg-tertiary); padding: 2px 8px; border-radius: 4px; font-size: 12px; min-width: 60px; font-family: 'Monaco', 'Consolas', monospace;">${sanitizeHTML(opt.value)}</code>
+              <span style="color: var(--text-secondary);">→</span>
+              <span style="flex: 1; font-size: 13px;">${sanitizeHTML(opt.label)}</span>
+            </div>
+            <div style="display: flex; gap: 2px;">
+              <button type="button" class="btn-icon" onclick="moveOptionUp(${idx})" title="위로 이동" ${idx === 0 ? 'disabled style="opacity: 0.3;"' : ''}>
+                <i class="fas fa-chevron-up" style="font-size: 10px;"></i>
+              </button>
+              <button type="button" class="btn-icon" onclick="moveOptionDown(${idx})" title="아래로 이동" ${idx === fieldOptionsData.length - 1 ? 'disabled style="opacity: 0.3;"' : ''}>
+                <i class="fas fa-chevron-down" style="font-size: 10px;"></i>
+              </button>
+              <button type="button" class="btn-icon" onclick="editFieldOption(${idx})" title="수정">
+                <i class="fas fa-edit" style="font-size: 11px;"></i>
+              </button>
+              <button type="button" class="btn-icon" onclick="removeFieldOption(${idx})" title="삭제" style="color: var(--danger);">
+                <i class="fas fa-trash" style="font-size: 11px;"></i>
+              </button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <div style="margin-top: 8px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 11px; color: var(--text-muted);">총 ${fieldOptionsData.length}개 옵션</span>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="toggleOptionsPreview()" style="font-size: 11px; padding: 4px 8px;">
+          <i class="fas fa-eye"></i> 미리보기
+        </button>
+      </div>
+      <div id="options-preview-container" style="display: none; margin-top: 12px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px; border: 1px dashed var(--border);"></div>
+    `;
+  }
+
+  function addFieldOption() {
+    const valueInput = document.getElementById('new-option-value');
+    const labelInput = document.getElementById('new-option-label');
+    
+    const value = valueInput?.value?.trim();
+    const label = labelInput?.value?.trim();
+    
+    if (!value) {
+      showToast('값을 입력해주세요.', 'warning');
+      valueInput?.focus();
+      return;
+    }
+    
+    // Check for duplicate value
+    if (fieldOptionsData.some(opt => opt.value === value)) {
+      showToast('이미 존재하는 값입니다.', 'warning');
+      valueInput?.focus();
+      return;
+    }
+    
+    fieldOptionsData.push({
+      value: value,
+      label: label || value
+    });
+    
+    // Clear inputs
+    if (valueInput) valueInput.value = '';
+    if (labelInput) labelInput.value = '';
+    valueInput?.focus();
+    
+    renderOptionsList();
+  }
+  window.addFieldOption = addFieldOption;
+
+  function removeFieldOption(index) {
+    if (confirm('이 옵션을 삭제하시겠습니까?')) {
+      fieldOptionsData.splice(index, 1);
+      renderOptionsList();
+      updateOptionsPreview();
+    }
+  }
+  window.removeFieldOption = removeFieldOption;
+
+  // 옵션 순서 이동 함수
+  function moveOptionUp(index) {
+    if (index <= 0) return;
+    const temp = fieldOptionsData[index];
+    fieldOptionsData[index] = fieldOptionsData[index - 1];
+    fieldOptionsData[index - 1] = temp;
+    renderOptionsList();
+    updateOptionsPreview();
+  }
+  window.moveOptionUp = moveOptionUp;
+
+  function moveOptionDown(index) {
+    if (index >= fieldOptionsData.length - 1) return;
+    const temp = fieldOptionsData[index];
+    fieldOptionsData[index] = fieldOptionsData[index + 1];
+    fieldOptionsData[index + 1] = temp;
+    renderOptionsList();
+    updateOptionsPreview();
+  }
+  window.moveOptionDown = moveOptionDown;
+
+  // 드래그 앤 드롭 관련 함수
+  let draggedOptionIndex = null;
+
+  function handleOptionDragStart(event, index) {
+    draggedOptionIndex = index;
+    event.target.style.opacity = '0.5';
+    event.dataTransfer.effectAllowed = 'move';
+  }
+  window.handleOptionDragStart = handleOptionDragStart;
+
+  function handleOptionDragOver(event) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }
+  window.handleOptionDragOver = handleOptionDragOver;
+
+  function handleOptionDrop(event, targetIndex) {
+    event.preventDefault();
+    if (draggedOptionIndex === null || draggedOptionIndex === targetIndex) return;
+    
+    const draggedItem = fieldOptionsData[draggedOptionIndex];
+    fieldOptionsData.splice(draggedOptionIndex, 1);
+    fieldOptionsData.splice(targetIndex, 0, draggedItem);
+    
+    renderOptionsList();
+    updateOptionsPreview();
+  }
+  window.handleOptionDrop = handleOptionDrop;
+
+  function handleOptionDragEnd(event) {
+    event.target.style.opacity = '1';
+    draggedOptionIndex = null;
+  }
+  window.handleOptionDragEnd = handleOptionDragEnd;
+
+  // 미리보기 토글 및 업데이트
+  function toggleOptionsPreview() {
+    const container = document.getElementById('options-preview-container');
+    if (!container) return;
+    
+    if (container.style.display === 'none') {
+      container.style.display = 'block';
+      updateOptionsPreview();
+    } else {
+      container.style.display = 'none';
+    }
+  }
+  window.toggleOptionsPreview = toggleOptionsPreview;
+
+  function updateOptionsPreview() {
+    const container = document.getElementById('options-preview-container');
+    if (!container || container.style.display === 'none') return;
+    
+    const fieldType = document.getElementById('field-type')?.value || document.getElementById('field-edit-type')?.value;
+    const fieldName = document.getElementById('field-name')?.value || document.getElementById('field-edit-name')?.value || '필드명';
+    
+    if (fieldOptionsData.length === 0) {
+      container.innerHTML = '<p style="text-align: center; color: var(--text-muted);">옵션을 추가하면 미리보기가 표시됩니다.</p>';
+      return;
+    }
+    
+    let previewHTML = `<label style="display: block; margin-bottom: 8px; font-weight: 500; font-size: 13px;">${sanitizeHTML(fieldName)}</label>`;
+    
+    if (fieldType === 'SELECT' || fieldType === 'MULTI_SELECT') {
+      previewHTML += `
+        <select class="form-input" style="max-width: 300px;" ${fieldType === 'MULTI_SELECT' ? 'multiple' : ''}>
+          <option value="">-- 선택하세요 --</option>
+          ${fieldOptionsData.map(opt => `<option value="${sanitizeHTML(opt.value)}">${sanitizeHTML(opt.label)}</option>`).join('')}
+        </select>
+      `;
+    } else if (fieldType === 'RADIO') {
+      previewHTML += `
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          ${fieldOptionsData.map((opt, idx) => `
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="radio" name="preview-radio" value="${sanitizeHTML(opt.value)}" ${idx === 0 ? 'checked' : ''}>
+              <span>${sanitizeHTML(opt.label)}</span>
+            </label>
+          `).join('')}
+        </div>
+      `;
+    } else if (fieldType === 'CHECKBOX') {
+      previewHTML += `
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          ${fieldOptionsData.map(opt => `
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" value="${sanitizeHTML(opt.value)}">
+              <span>${sanitizeHTML(opt.label)}</span>
+            </label>
+          `).join('')}
+        </div>
+      `;
+    }
+    
+    container.innerHTML = previewHTML;
+  }
+  window.updateOptionsPreview = updateOptionsPreview;
+
+  function editFieldOption(index) {
+    const opt = fieldOptionsData[index];
+    if (!opt) return;
+    
+    showModal('옵션 수정', `
+      <div class="form-group">
+        <label class="form-label">값 (저장용)</label>
+        <input type="text" class="form-input" id="edit-option-value" value="${sanitizeHTML(opt.value)}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">라벨 (표시용)</label>
+        <input type="text" class="form-input" id="edit-option-label" value="${sanitizeHTML(opt.label)}">
+      </div>
+    `, [
+      { label: '취소', onclick: 'closeModal(); renderOptionsList();' },
+      { label: '저장', primary: true, onclick: `saveEditedOption(${index})` }
+    ]);
+  }
+  window.editFieldOption = editFieldOption;
+
+  function saveEditedOption(index) {
+    const value = document.getElementById('edit-option-value')?.value?.trim();
+    const label = document.getElementById('edit-option-label')?.value?.trim();
+    
+    if (!value) {
+      showToast('값을 입력해주세요.', 'warning');
+      return;
+    }
+    
+    // Check for duplicate value (except current)
+    if (fieldOptionsData.some((opt, idx) => idx !== index && opt.value === value)) {
+      showToast('이미 존재하는 값입니다.', 'warning');
+      return;
+    }
+    
+    fieldOptionsData[index] = { value, label: label || value };
+    closeModal();
+    
+    // Re-show the field modal - this is a workaround
+    showToast('옵션이 수정되었습니다.', 'success');
+  }
+  window.saveEditedOption = saveEditedOption;
+
+  function applyOptionTemplate(template) {
+    const templates = {
+      yesno: [
+        { value: 'Y', label: '예 (Yes)' },
+        { value: 'N', label: '아니오 (No)' }
+      ],
+      gender: [
+        { value: 'M', label: '남성 (Male)' },
+        { value: 'F', label: '여성 (Female)' },
+        { value: 'U', label: '알 수 없음 (Unknown)' }
+      ],
+      severity: [
+        { value: 'MILD', label: '경미 (Mild)' },
+        { value: 'MODERATE', label: '중등도 (Moderate)' },
+        { value: 'SEVERE', label: '중증 (Severe)' },
+        { value: 'LIFE_THREATENING', label: '생명 위협 (Life-threatening)' }
+      ],
+      frequency: [
+        { value: 'NEVER', label: '없음 (Never)' },
+        { value: 'RARELY', label: '드물게 (Rarely)' },
+        { value: 'SOMETIMES', label: '가끔 (Sometimes)' },
+        { value: 'OFTEN', label: '자주 (Often)' },
+        { value: 'ALWAYS', label: '항상 (Always)' }
+      ],
+      agreement: [
+        { value: 'AGREE', label: '동의함' },
+        { value: 'DISAGREE', label: '동의하지 않음' },
+        { value: 'WITHDRAWN', label: '철회' }
+      ],
+      race: [
+        { value: 'ASIAN', label: '아시아인 (Asian)' },
+        { value: 'BLACK', label: '흑인 (Black/African American)' },
+        { value: 'WHITE', label: '백인 (White/Caucasian)' },
+        { value: 'HISPANIC', label: '히스패닉 (Hispanic/Latino)' },
+        { value: 'NATIVE', label: '원주민 (Native American)' },
+        { value: 'PACIFIC', label: '태평양 섬 주민 (Pacific Islander)' },
+        { value: 'MIXED', label: '혼혈 (Mixed Race)' },
+        { value: 'OTHER', label: '기타 (Other)' },
+        { value: 'UNKNOWN', label: '알 수 없음 (Unknown)' }
+      ]
+    };
+    
+    const templateData = templates[template];
+    if (!templateData) return;
+    
+    // Confirm if existing options
+    if (fieldOptionsData.length > 0) {
+      if (!confirm('기존 옵션을 템플릿으로 대체하시겠습니까?')) {
+        return;
+      }
+    }
+    
+    fieldOptionsData = [...templateData];
+    renderOptionsList();
+    showToast('템플릿이 적용되었습니다.', 'success');
+  }
+  window.applyOptionTemplate = applyOptionTemplate;
 
   async function createField(studyId, formId) {
     const fieldCode = document.getElementById('field-code')?.value?.trim().toUpperCase();
@@ -2224,25 +2590,20 @@
     const helpText = document.getElementById('field-help')?.value?.trim();
     const minValue = document.getElementById('field-min')?.value;
     const maxValue = document.getElementById('field-max')?.value;
-    const optionsText = document.getElementById('field-options')?.value?.trim();
 
     if (!fieldCode || !fieldName || !fieldType) {
       showToast('필드 코드, 필드명, 데이터 타입은 필수입니다.', 'error');
       return;
     }
 
-    // 옵션 파싱
+    // 옵션 처리 - fieldOptionsData 배열 사용
     let options = null;
-    if (optionsText && ['SELECT', 'RADIO', 'CHECKBOX'].includes(fieldType)) {
-      try {
-        options = optionsText.split('\n').filter(line => line.trim()).map(line => {
-          const parts = line.split('|');
-          return { value: parts[0].trim(), label: parts[1]?.trim() || parts[0].trim() };
-        });
-      } catch (e) {
-        showToast('옵션 형식이 올바르지 않습니다.', 'error');
+    if (['SELECT', 'RADIO', 'CHECKBOX', 'MULTI_SELECT'].includes(fieldType)) {
+      if (fieldOptionsData.length === 0) {
+        showToast('선택 옵션을 최소 1개 이상 추가해주세요.', 'error');
         return;
       }
+      options = fieldOptionsData;
     }
 
     try {
@@ -2271,14 +2632,18 @@
     const field = (form?.fields || []).find(f => f.id === fieldId);
     if (!field) return;
 
-    // 옵션을 텍스트로 변환
-    let optionsText = '';
+    // 기존 옵션을 fieldOptionsData에 로드
+    fieldOptionsData = [];
     if (field.options) {
       try {
         const opts = JSON.parse(field.options);
-        optionsText = opts.map(o => `${o.value}|${o.label}`).join('\n');
+        if (Array.isArray(opts)) {
+          fieldOptionsData = opts.map(o => ({ value: o.value, label: o.label }));
+        }
       } catch (e) {}
     }
+
+    const showOptions = ['SELECT', 'RADIO', 'CHECKBOX', 'MULTI_SELECT'].includes(field.field_type);
 
     showModal('필드 수정', `
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
@@ -2301,12 +2666,49 @@
           ${FIELD_TYPES.map(t => `<option value="${t.value}" ${field.field_type === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
         </select>
       </div>
-      <div id="field-edit-options-container" style="display: ${['SELECT', 'RADIO', 'CHECKBOX'].includes(field.field_type) ? 'block' : 'none'};">
+      
+      <!-- Options Builder for SELECT, RADIO, CHECKBOX (same as new field modal) -->
+      <div id="field-edit-options-container" style="display: ${showOptions ? 'block' : 'none'};">
         <div class="form-group">
-          <label class="form-label">선택 옵션</label>
-          <textarea class="form-input" id="field-edit-options" rows="4" placeholder="값|라벨">${optionsText}</textarea>
+          <label class="form-label">
+            선택 옵션 
+            <span style="font-weight: normal; color: var(--text-muted); font-size: 11px;">(최소 1개 이상)</span>
+          </label>
+          
+          <!-- Options List -->
+          <div id="options-list" style="margin-bottom: 12px;"></div>
+          
+          <!-- Add Option Form -->
+          <div style="display: flex; gap: 8px; align-items: flex-end; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+            <div style="flex: 1;">
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">값 (저장용)</label>
+              <input type="text" class="form-input" id="new-option-value" placeholder="예: M, 1, YES" style="padding: 8px; font-size: 13px;">
+            </div>
+            <div style="flex: 2;">
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">라벨 (표시용)</label>
+              <input type="text" class="form-input" id="new-option-label" placeholder="예: 남성, 예, 동의함" style="padding: 8px; font-size: 13px;" onkeypress="if(event.key==='Enter'){event.preventDefault();addFieldOption();}">
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="addFieldOption()" style="height: 36px; padding: 0 12px;">
+              <i class="fas fa-plus"></i> 추가
+            </button>
+          </div>
+          
+          <!-- Quick Templates -->
+          <div style="margin-top: 12px;">
+            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px;">빠른 템플릿:</label>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="applyOptionTemplate('yesno')" style="font-size: 11px; padding: 4px 8px;">예/아니오</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="applyOptionTemplate('gender')" style="font-size: 11px; padding: 4px 8px;">성별</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="applyOptionTemplate('severity')" style="font-size: 11px; padding: 4px 8px;">심각도</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="applyOptionTemplate('frequency')" style="font-size: 11px; padding: 4px 8px;">빈도</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="applyOptionTemplate('agreement')" style="font-size: 11px; padding: 4px 8px;">동의 여부</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="applyOptionTemplate('race')" style="font-size: 11px; padding: 4px 8px;">인종</button>
+            </div>
+          </div>
         </div>
       </div>
+      
+      <!-- Number Range -->
       <div id="field-edit-number-container" style="display: ${field.field_type === 'NUMBER' ? 'block' : 'none'};">
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
           <div class="form-group">
@@ -2319,6 +2721,7 @@
           </div>
         </div>
       </div>
+      
       <div class="form-group">
         <label class="form-label" style="display: flex; align-items: center; gap: 8px;">
           <input type="checkbox" id="field-edit-required" ${field.is_required ? 'checked' : ''}> 필수 입력
@@ -2332,6 +2735,13 @@
       { label: '취소', onclick: 'closeModal()' },
       { label: '저장', primary: true, onclick: `updateField('${studyId}', '${formId}', '${fieldId}')` }
     ]);
+
+    // 초기 옵션 렌더링
+    setTimeout(() => {
+      if (showOptions) {
+        renderOptionsList();
+      }
+    }, 100);
   }
   window.showEditFieldModal = showEditFieldModal;
 
@@ -2340,8 +2750,13 @@
     const optionsContainer = document.getElementById('field-edit-options-container');
     const numberContainer = document.getElementById('field-edit-number-container');
     
+    const showOptions = ['SELECT', 'RADIO', 'CHECKBOX', 'MULTI_SELECT'].includes(fieldType);
+    
     if (optionsContainer) {
-      optionsContainer.style.display = ['SELECT', 'RADIO', 'CHECKBOX'].includes(fieldType) ? 'block' : 'none';
+      optionsContainer.style.display = showOptions ? 'block' : 'none';
+      if (showOptions) {
+        renderOptionsList();
+      }
     }
     if (numberContainer) {
       numberContainer.style.display = fieldType === 'NUMBER' ? 'block' : 'none';
@@ -2357,19 +2772,20 @@
     const helpText = document.getElementById('field-edit-help')?.value?.trim();
     const minValue = document.getElementById('field-edit-min')?.value;
     const maxValue = document.getElementById('field-edit-max')?.value;
-    const optionsText = document.getElementById('field-edit-options')?.value?.trim();
 
     if (!fieldName) {
       showToast('필드명은 필수입니다.', 'error');
       return;
     }
 
+    // 옵션 처리 - fieldOptionsData 배열 사용 (새 필드 추가와 동일)
     let options = null;
-    if (optionsText && ['SELECT', 'RADIO', 'CHECKBOX'].includes(fieldType)) {
-      options = optionsText.split('\n').filter(line => line.trim()).map(line => {
-        const parts = line.split('|');
-        return { value: parts[0].trim(), label: parts[1]?.trim() || parts[0].trim() };
-      });
+    if (['SELECT', 'RADIO', 'CHECKBOX', 'MULTI_SELECT'].includes(fieldType)) {
+      if (fieldOptionsData.length === 0) {
+        showToast('선택 옵션을 최소 1개 이상 추가해주세요.', 'error');
+        return;
+      }
+      options = fieldOptionsData;
     }
 
     try {
