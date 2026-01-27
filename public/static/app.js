@@ -1022,7 +1022,7 @@
             ${ui.canWrite() && site.status === 'ACTIVE' ? `<button class="btn btn-primary btn-sm" onclick="showNewSubjectModal('${site.id}')"><i class="fas fa-user-plus"></i> 피험자 등록</button>` : ''}
           </div>
           <div class="card-body compact">
-            ${subjects.length === 0 ? `<div class="empty-state"><i class="fas fa-users"></i><h3>등록된 피험자가 없습니다</h3></div>` : `
+            ${subjects.length === 0 ? `<div class="empty-state"><i class="fas fa-users"></i><h3>등록된 피험자가 없습니다</h3>${ui.canWrite() && site.status === 'ACTIVE' ? `<p style="color: var(--text-secondary); margin-bottom: 16px;">새로운 피험자를 등록해 주세요</p><button class="btn btn-primary" onclick="showNewSubjectModal('${site.id}')"><i class="fas fa-user-plus"></i> 피험자 등록</button>` : '<p style="color: var(--text-secondary);">피험자를 등록하려면 ACTIVE 상태의 기관이 필요합니다</p>'}</div>` : `
               <table class="data-table">
                 <thead><tr><th>Subject ID</th><th>Screening #</th><th>이니셜</th><th>상태</th><th>등록일</th><th></th></tr></thead>
                 <tbody>

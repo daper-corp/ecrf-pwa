@@ -183,16 +183,16 @@ subjects.post('/', requireAuth, requirePermission('WRITE_DATA'), async (c) => {
       }
     }
 
-    // Subject 번호 자동 생성
-    const lastSubject = await c.env.DB.prepare(`
+    // Subject 번호 자동 생성 - 가장 큰 번호 기준으로 다음 번호 계산
+    const maxSubject = await c.env.DB.prepare(`
       SELECT subject_number FROM subjects WHERE site_id = ?
-      ORDER BY created_at DESC LIMIT 1
+      ORDER BY CAST(SUBSTR(subject_number, INSTR(subject_number, '-') + 1) AS INTEGER) DESC LIMIT 1
     `).bind(siteId).first<{ subject_number: string }>();
 
     let nextSeq = 1;
-    if (lastSubject) {
-      const parts = lastSubject.subject_number.split('-');
-      nextSeq = parseInt(parts[1] || '0') + 1;
+    if (maxSubject) {
+      const parts = maxSubject.subject_number.split('-');
+      nextSeq = parseInt(parts[parts.length - 1] || '0') + 1;
     }
 
     const subjectNumber = generateSubjectId(site.site_number, nextSeq);
