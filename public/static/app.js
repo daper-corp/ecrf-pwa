@@ -3921,28 +3921,64 @@
   async function exportData(format) {
     const studyId = document.getElementById('export-study')?.value;
     
+    if (!studyId) {
+      showToast('Study를 선택해주세요.', 'warning');
+      return;
+    }
+    
     closeModal();
     showToast(`${format.toUpperCase()} Export를 시작합니다...`, 'info');
 
     try {
-      const result = await api.get(`/exports/${format}${studyId ? `?studyId=${studyId}` : ''}`);
-      
-      if (result.success && result.data?.downloadUrl) {
-        window.open(result.data.downloadUrl, '_blank');
-        showToast('Export 파일이 준비되었습니다.', 'success');
-      } else if (result.data) {
-        // Create downloadable file
-        const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `export_${format}_${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        showToast('Export가 완료되었습니다.', 'success');
+      // Use fetch with blob response type for file downloads
+      const url = `${CONFIG.apiBaseUrl}/exports/${format}?studyId=${studyId}`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${state.token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Export failed');
       }
+
+      // Check content type
+      const contentType = response.headers.get('content-type') || '';
+      const contentDisposition = response.headers.get('content-disposition') || '';
+      
+      // Extract filename from content-disposition header
+      let filename = `export_${format}_${new Date().toISOString().split('T')[0]}`;
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (filenameMatch) {
+        filename = filenameMatch[1].replace(/['"]/g, '');
+      } else {
+        // Set extension based on format
+        if (format === 'odm') {
+          filename += '.xml';
+        } else {
+          filename += '.csv';
+        }
+      }
+
+      // Get response as blob
+      const blob = await response.blob();
+      
+      // Create download link
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+      
+      showToast('Export가 완료되었습니다.', 'success');
     } catch (error) {
-      showToast('Export에 실패했습니다.', 'error');
+      console.error('Export error:', error);
+      showToast(error.message || 'Export에 실패했습니다.', 'error');
     }
   }
   window.exportData = exportData;
