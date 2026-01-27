@@ -1514,6 +1514,7 @@
       mainContent.innerHTML = `<div class="empty-state" style="margin-top: 40px;"><i class="fas fa-exclamation-circle" style="color: var(--danger);"></i><h3>방문 정보 로드 실패</h3><button class="btn btn-primary" style="margin-top: 16px;" onclick="navigateTo('dashboard')">대시보드로 돌아가기</button></div>`;
     }
   }
+  window.loadVisitDetail = loadVisitDetail;
 
   async function startVisit(visitId) {
     try {
