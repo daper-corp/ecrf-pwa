@@ -832,6 +832,39 @@
 
         <div class="card">
           <div class="card-header">
+            <span class="card-title">CRF 양식 (${(study.formDefinitions || []).length})</span>
+            ${ui.canManage() && study.status !== 'LOCKED' ? `<button class="btn btn-primary btn-sm" onclick="showNewFormDefinitionModal('${study.id}')"><i class="fas fa-plus"></i> 양식 추가</button>` : ''}
+          </div>
+          <div class="card-body compact">
+            ${(study.formDefinitions || []).length === 0 ? `<div class="empty-state"><i class="fas fa-file-medical"></i><h3>등록된 CRF 양식이 없습니다</h3>${ui.canManage() && study.status !== 'LOCKED' ? `<p style="color: var(--text-secondary); margin-bottom: 16px;">CRF 데이터 수집을 위해 양식을 추가해 주세요</p><button class="btn btn-primary" onclick="showNewFormDefinitionModal('${study.id}')"><i class="fas fa-plus"></i> 양식 추가</button>` : ''}</div>` : `
+              <table class="data-table">
+                <thead><tr><th>순서</th><th>양식 코드</th><th>양식명</th><th>방문</th><th>필수</th><th></th></tr></thead>
+                <tbody>
+                  ${(study.formDefinitions || []).map(form => {
+                    const visitSchedule = (study.visitSchedules || []).find(vs => vs.id === form.visit_schedule_id);
+                    return `
+                    <tr>
+                      <td>${form.form_order || '-'}</td>
+                      <td><strong>${form.form_code}</strong></td>
+                      <td>${form.form_name}</td>
+                      <td>${visitSchedule ? visitSchedule.visit_name : '전체'}</td>
+                      <td>${form.is_required ? '<span class="badge badge-active">필수</span>' : '<span class="badge badge-draft">선택</span>'}</td>
+                      <td>
+                        ${ui.canManage() && study.status !== 'LOCKED' ? `
+                          <button class="btn btn-secondary btn-sm" onclick="showEditFormDefinitionModal('${study.id}', '${form.id}')" style="padding: 4px 8px;"><i class="fas fa-edit"></i></button>
+                          <button class="btn btn-secondary btn-sm" onclick="deleteFormDefinition('${study.id}', '${form.id}')" style="padding: 4px 8px;"><i class="fas fa-trash"></i></button>
+                        ` : ''}
+                      </td>
+                    </tr>
+                  `}).join('')}
+                </tbody>
+              </table>
+            `}
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
             <span class="card-title">연구기관 목록 (${sites.length})</span>
             ${ui.canManage() ? `<button class="btn btn-primary btn-sm" onclick="showNewSiteModal('${study.id}')"><i class="fas fa-plus"></i> 기관 추가</button>` : ''}
           </div>
@@ -1106,6 +1139,168 @@
   window.deleteVisitSchedule = deleteVisitSchedule;
 
   // =====================================================
+  // FORM DEFINITION (CRF 양식) CRUD
+  // =====================================================
+  function showNewFormDefinitionModal(studyId) {
+    const study = state.currentStudy;
+    const visitSchedules = study?.visitSchedules || [];
+    const existingForms = study?.formDefinitions || [];
+    const maxOrder = existingForms.length > 0 
+      ? Math.max(...existingForms.map(f => f.form_order || 0)) 
+      : 0;
+
+    showModal('CRF 양식 추가', `
+      <div class="form-group">
+        <label class="form-label">양식 코드 <span class="required">*</span></label>
+        <input type="text" class="form-input" id="form-code" placeholder="예: DM, VS, AE, CM" style="text-transform: uppercase;">
+      </div>
+      <div class="form-group">
+        <label class="form-label">양식명 <span class="required">*</span></label>
+        <input type="text" class="form-input" id="form-name" placeholder="예: Demographics, Vital Signs">
+      </div>
+      <div class="form-group">
+        <label class="form-label">적용 방문</label>
+        <select class="form-input" id="form-visit-schedule">
+          <option value="">전체 방문</option>
+          ${visitSchedules.map(vs => `<option value="${vs.id}">V${vs.visit_number} - ${vs.visit_name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">표시 순서</label>
+        <input type="number" class="form-input" id="form-order" value="${maxOrder + 1}" min="1">
+      </div>
+      <div class="form-group">
+        <label class="form-label" style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="form-is-required" checked> 필수 양식
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-label">설명</label>
+        <textarea class="form-input" id="form-description" rows="2" placeholder="양식에 대한 설명"></textarea>
+      </div>
+    `, [
+      { label: '취소', onclick: 'closeModal()' },
+      { label: '추가', primary: true, onclick: `createFormDefinition('${studyId}')` }
+    ]);
+  }
+  window.showNewFormDefinitionModal = showNewFormDefinitionModal;
+
+  async function createFormDefinition(studyId) {
+    const formCode = document.getElementById('form-code')?.value?.trim().toUpperCase();
+    const formName = document.getElementById('form-name')?.value?.trim();
+    const visitScheduleId = document.getElementById('form-visit-schedule')?.value || null;
+    const formOrder = parseInt(document.getElementById('form-order')?.value) || 1;
+    const isRequired = document.getElementById('form-is-required')?.checked ?? true;
+    const description = document.getElementById('form-description')?.value?.trim();
+
+    if (!formCode || !formName) {
+      showToast('양식 코드와 양식명은 필수입니다.', 'error');
+      return;
+    }
+
+    try {
+      await api.post(`/studies/${studyId}/form-definitions`, {
+        form_code: formCode,
+        form_name: formName,
+        visit_schedule_id: visitScheduleId,
+        form_order: formOrder,
+        is_required: isRequired,
+        description: description || null
+      });
+      closeModal();
+      showToast('CRF 양식이 추가되었습니다.', 'success');
+      loadStudyDetail(studyId);
+    } catch (error) {
+      showToast(error.error || '추가에 실패했습니다.', 'error');
+    }
+  }
+  window.createFormDefinition = createFormDefinition;
+
+  function showEditFormDefinitionModal(studyId, formId) {
+    const study = state.currentStudy;
+    const form = (study?.formDefinitions || []).find(f => f.id === formId);
+    const visitSchedules = study?.visitSchedules || [];
+    if (!form) return;
+
+    showModal('CRF 양식 수정', `
+      <div class="form-group">
+        <label class="form-label">양식 코드</label>
+        <input type="text" class="form-input" value="${form.form_code}" readonly style="background: var(--bg-tertiary);">
+      </div>
+      <div class="form-group">
+        <label class="form-label">양식명 <span class="required">*</span></label>
+        <input type="text" class="form-input" id="form-edit-name" value="${form.form_name || ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">적용 방문</label>
+        <select class="form-input" id="form-edit-visit-schedule">
+          <option value="">전체 방문</option>
+          ${visitSchedules.map(vs => `<option value="${vs.id}" ${form.visit_schedule_id === vs.id ? 'selected' : ''}>V${vs.visit_number} - ${vs.visit_name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">표시 순서</label>
+        <input type="number" class="form-input" id="form-edit-order" value="${form.form_order || 1}" min="1">
+      </div>
+      <div class="form-group">
+        <label class="form-label" style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="form-edit-is-required" ${form.is_required ? 'checked' : ''}> 필수 양식
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-label">설명</label>
+        <textarea class="form-input" id="form-edit-description" rows="2">${form.description || ''}</textarea>
+      </div>
+    `, [
+      { label: '취소', onclick: 'closeModal()' },
+      { label: '저장', primary: true, onclick: `updateFormDefinition('${studyId}', '${formId}')` }
+    ]);
+  }
+  window.showEditFormDefinitionModal = showEditFormDefinitionModal;
+
+  async function updateFormDefinition(studyId, formId) {
+    const formName = document.getElementById('form-edit-name')?.value?.trim();
+    const visitScheduleId = document.getElementById('form-edit-visit-schedule')?.value || null;
+    const formOrder = parseInt(document.getElementById('form-edit-order')?.value) || 1;
+    const isRequired = document.getElementById('form-edit-is-required')?.checked ?? true;
+    const description = document.getElementById('form-edit-description')?.value?.trim();
+
+    if (!formName) {
+      showToast('양식명은 필수입니다.', 'error');
+      return;
+    }
+
+    try {
+      await api.put(`/studies/${studyId}/form-definitions/${formId}`, {
+        form_name: formName,
+        visit_schedule_id: visitScheduleId,
+        form_order: formOrder,
+        is_required: isRequired,
+        description: description || null
+      });
+      closeModal();
+      showToast('CRF 양식이 수정되었습니다.', 'success');
+      loadStudyDetail(studyId);
+    } catch (error) {
+      showToast(error.error || '수정에 실패했습니다.', 'error');
+    }
+  }
+  window.updateFormDefinition = updateFormDefinition;
+
+  async function deleteFormDefinition(studyId, formId) {
+    if (!confirm('이 CRF 양식을 삭제하시겠습니까?')) return;
+
+    try {
+      await api.delete(`/studies/${studyId}/form-definitions/${formId}`);
+      showToast('CRF 양식이 삭제되었습니다.', 'success');
+      loadStudyDetail(studyId);
+    } catch (error) {
+      showToast(error.error || '삭제에 실패했습니다.', 'error');
+    }
+  }
+  window.deleteFormDefinition = deleteFormDefinition;
+
+  // =====================================================
   // SITE CRUD
   // =====================================================
   function showNewSiteModal(studyId) {
@@ -1266,6 +1461,7 @@
       <div class="form-group">
         <label class="form-label">상태</label>
         <select class="form-input" id="edit-site-status">
+          <option value="PENDING" ${site.status === 'PENDING' ? 'selected' : ''}>대기중</option>
           <option value="ACTIVE" ${site.status === 'ACTIVE' ? 'selected' : ''}>활성</option>
           <option value="INACTIVE" ${site.status === 'INACTIVE' ? 'selected' : ''}>비활성</option>
           <option value="CLOSED" ${site.status === 'CLOSED' ? 'selected' : ''}>종료</option>

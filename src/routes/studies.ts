@@ -748,4 +748,191 @@ studies.delete('/:id/visit-schedules/:vsId', requireAuth, requirePermission('MAN
   }
 });
 
+/**
+ * GET /api/studies/:id/form-definitions
+ * Form Definition 목록 조회
+ */
+studies.get('/:id/form-definitions', requireAuth, async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+
+    const formDefinitions = await c.env.DB.prepare(`
+      SELECT * FROM form_definitions WHERE study_id = ? ORDER BY form_order
+    `).bind(studyId).all();
+
+    return c.json({
+      success: true,
+      data: formDefinitions.results,
+    });
+  } catch (error) {
+    console.error('Get form definitions error:', error);
+    return c.json({ success: false, error: 'Form Definition 조회 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * POST /api/studies/:id/form-definitions
+ * Form Definition 생성
+ */
+studies.post('/:id/form-definitions', requireAuth, requirePermission('MANAGE_STUDY'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+    const body = await c.req.json();
+    const { form_code, form_name, visit_schedule_id, form_order, is_required, description } = body;
+
+    if (!form_code || !form_name) {
+      return c.json({ success: false, error: '양식 코드와 양식명은 필수입니다.' }, 400);
+    }
+
+    // Study 확인
+    const study = await c.env.DB.prepare(`
+      SELECT id, status FROM studies WHERE id = ?
+    `).bind(studyId).first<{ id: string; status: string }>();
+
+    if (!study) {
+      return c.json({ success: false, error: 'Study를 찾을 수 없습니다.' }, 404);
+    }
+
+    if (study.status === 'LOCKED') {
+      return c.json({ success: false, error: '잠금된 Study에는 양식을 추가할 수 없습니다.' }, 400);
+    }
+
+    // 중복 양식 코드 확인
+    const existing = await c.env.DB.prepare(`
+      SELECT id FROM form_definitions WHERE study_id = ? AND form_code = ?
+    `).bind(studyId, form_code).first();
+
+    if (existing) {
+      return c.json({ success: false, error: '이미 존재하는 양식 코드입니다.' }, 400);
+    }
+
+    const formId = generateId('form');
+    const timestamp = now();
+
+    await c.env.DB.prepare(`
+      INSERT INTO form_definitions (
+        id, study_id, visit_schedule_id, form_name, form_code,
+        form_order, is_required, description, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      formId, studyId, visit_schedule_id || null, form_name, form_code,
+      form_order ?? 1, is_required ? 1 : 0, description ?? null, timestamp
+    ).run();
+
+    const newForm = await c.env.DB.prepare(`
+      SELECT * FROM form_definitions WHERE id = ?
+    `).bind(formId).first();
+
+    return c.json({ success: true, data: newForm }, 201);
+  } catch (error) {
+    console.error('Create form definition error:', error);
+    return c.json({ success: false, error: 'Form Definition 생성 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * PUT /api/studies/:id/form-definitions/:formId
+ * Form Definition 수정
+ */
+studies.put('/:id/form-definitions/:formId', requireAuth, requirePermission('MANAGE_STUDY'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+    const formId = c.req.param('formId');
+    const body = await c.req.json();
+    const { form_name, visit_schedule_id, form_order, is_required, description } = body;
+
+    // Study 확인
+    const study = await c.env.DB.prepare(`
+      SELECT id, status FROM studies WHERE id = ?
+    `).bind(studyId).first<{ id: string; status: string }>();
+
+    if (!study) {
+      return c.json({ success: false, error: 'Study를 찾을 수 없습니다.' }, 404);
+    }
+
+    if (study.status === 'LOCKED') {
+      return c.json({ success: false, error: '잠금된 Study의 양식은 수정할 수 없습니다.' }, 400);
+    }
+
+    await c.env.DB.prepare(`
+      UPDATE form_definitions SET
+        form_name = COALESCE(?, form_name),
+        visit_schedule_id = ?,
+        form_order = COALESCE(?, form_order),
+        is_required = COALESCE(?, is_required),
+        description = COALESCE(?, description)
+      WHERE id = ? AND study_id = ?
+    `).bind(
+      form_name, visit_schedule_id || null, form_order,
+      is_required !== undefined ? (is_required ? 1 : 0) : null, description,
+      formId, studyId
+    ).run();
+
+    const updated = await c.env.DB.prepare(`
+      SELECT * FROM form_definitions WHERE id = ?
+    `).bind(formId).first();
+
+    return c.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Update form definition error:', error);
+    return c.json({ success: false, error: 'Form Definition 수정 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * DELETE /api/studies/:id/form-definitions/:formId
+ * Form Definition 삭제
+ */
+studies.delete('/:id/form-definitions/:formId', requireAuth, requirePermission('MANAGE_STUDY'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+    const formId = c.req.param('formId');
+
+    // Study 확인
+    const study = await c.env.DB.prepare(`
+      SELECT id, status FROM studies WHERE id = ?
+    `).bind(studyId).first<{ id: string; status: string }>();
+
+    if (!study) {
+      return c.json({ success: false, error: 'Study를 찾을 수 없습니다.' }, 404);
+    }
+
+    if (study.status === 'LOCKED') {
+      return c.json({ success: false, error: '잠금된 Study의 양식은 삭제할 수 없습니다.' }, 400);
+    }
+
+    // 해당 Form이 사용중인지 확인 (CRF Instance가 있는지)
+    const usedCount = await c.env.DB.prepare(`
+      SELECT COUNT(*) as count FROM crf_instances WHERE form_code = (
+        SELECT form_code FROM form_definitions WHERE id = ?
+      )
+    `).bind(formId).first<{ count: number }>();
+
+    if (usedCount && usedCount.count > 0) {
+      return c.json({ success: false, error: '이미 사용 중인 양식은 삭제할 수 없습니다.' }, 400);
+    }
+
+    await c.env.DB.prepare(`
+      DELETE FROM form_definitions WHERE id = ? AND study_id = ?
+    `).bind(formId, studyId).run();
+
+    return c.json({ success: true, message: 'CRF 양식이 삭제되었습니다.' });
+  } catch (error) {
+    console.error('Delete form definition error:', error);
+    return c.json({ success: false, error: 'Form Definition 삭제 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
 export default studies;
