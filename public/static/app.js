@@ -2309,7 +2309,8 @@
 
       state.currentVisit = result.data;
       const visit = result.data;
-      const crfData = visit.crfData || [];
+      const crfInstances = visit.crfInstances || [];
+      const availableForms = visit.availableForms || [];
 
       mainContent.innerHTML = `
         <div class="card">
@@ -2342,27 +2343,44 @@
 
         <div class="card">
           <div class="card-header">
-            <span class="card-title">CRF 데이터</span>
+            <span class="card-title">CRF 양식 (${crfInstances.length}/${availableForms.length})</span>
           </div>
           <div class="card-body">
-            ${crfData.length === 0 ? `
-              <div class="empty-state"><i class="fas fa-file-alt"></i><h3>CRF 데이터가 없습니다</h3></div>
+            ${availableForms.length === 0 ? `
+              <div class="empty-state"><i class="fas fa-file-alt"></i><h3>사용 가능한 CRF 양식이 없습니다</h3><p style="color: var(--text-muted);">Study에서 CRF 양식을 먼저 정의해 주세요.</p></div>
             ` : `
-              <div style="display: grid; gap: 16px;">
-                ${crfData.map(crf => `
-                  <div style="border: 1px solid var(--border); border-radius: 8px; padding: 16px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                      <div>
-                        <strong>${crf.form_code}</strong> - ${crf.form_name || 'CRF Form'}
-                        ${getStatusBadge(crf.status)}
+              <div style="display: grid; gap: 12px;">
+                ${availableForms.map(form => {
+                  const instance = crfInstances.find(c => c.form_code === form.form_code);
+                  const hasData = instance && instance.data && instance.data.length > 0;
+                  return `
+                  <div style="border: 1px solid var(--border); border-radius: 8px; padding: 16px; ${instance ? 'background: var(--bg-secondary);' : ''}">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                      <div style="flex: 1;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                          <strong>${form.form_code}</strong> - ${form.form_name}
+                          ${form.is_required ? '<span class="badge badge-active" style="font-size: 10px;">필수</span>' : ''}
+                          ${instance ? getStatusBadge(instance.status) : '<span class="badge badge-draft">미입력</span>'}
+                        </div>
+                        ${instance ? `
+                          <div style="font-size: 12px; color: var(--text-muted);">
+                            입력: ${instance.data_entry_by ? ui.formatDateTime(instance.data_entry_at) : '-'} 
+                            ${instance.signed_at ? `| 서명: ${ui.formatDateTime(instance.signed_at)}` : ''}
+                          </div>
+                        ` : `<div style="font-size: 12px; color: var(--text-muted);">아직 데이터가 입력되지 않았습니다.</div>`}
                       </div>
-                      ${ui.canWrite() ? `<button class="btn btn-secondary btn-sm" onclick="editCRF('${crf.id}')"><i class="fas fa-edit"></i> 편집</button>` : ''}
-                    </div>
-                    <div style="font-size: 13px; color: var(--text-muted);">
-                      마지막 수정: ${ui.formatDateTime(crf.updated_at)}
+                      <div style="display: flex; gap: 8px;">
+                        ${ui.canWrite() && visit.status !== 'COMPLETE' ? `
+                          ${instance 
+                            ? `<button class="btn btn-secondary btn-sm" onclick="openCRFEntry('${visitId}', '${form.form_code}', '${instance.id}')"><i class="fas fa-edit"></i> 수정</button>`
+                            : `<button class="btn btn-primary btn-sm" onclick="openCRFEntry('${visitId}', '${form.form_code}', null)"><i class="fas fa-plus"></i> 입력</button>`
+                          }
+                        ` : ''}
+                        ${instance ? `<button class="btn btn-secondary btn-sm" onclick="viewCRFData('${instance.id}')"><i class="fas fa-eye"></i></button>` : ''}
+                      </div>
                     </div>
                   </div>
-                `).join('')}
+                `}).join('')}
               </div>
             `}
           </div>
@@ -2396,8 +2414,216 @@
   }
   window.completeVisit = completeVisit;
 
+  // CRF 입력/수정
+  async function openCRFEntry(visitId, formCode, crfInstanceId) {
+    const visit = state.currentVisit;
+    const study = state.currentStudy;
+    
+    // Form Definition 및 필드 로드
+    const formDef = (visit?.availableForms || []).find(f => f.form_code === formCode);
+    if (!formDef) {
+      showToast('양식을 찾을 수 없습니다.', 'error');
+      return;
+    }
+
+    try {
+      // 필드 정의 로드
+      const fieldsResult = await api.get(`/studies/${study.id}/form-definitions/${formDef.id}/fields`);
+      const fields = fieldsResult.data || [];
+
+      if (fields.length === 0) {
+        showToast('양식에 필드가 정의되지 않았습니다.', 'error');
+        return;
+      }
+
+      // 기존 데이터 로드 (수정 모드)
+      let existingData = {};
+      if (crfInstanceId) {
+        const instance = (visit.crfInstances || []).find(c => c.id === crfInstanceId);
+        if (instance && instance.data) {
+          instance.data.forEach(d => {
+            existingData[d.field_code] = d.field_value;
+          });
+        }
+      }
+
+      // 모달 내용 생성
+      const fieldsHtml = fields.map(field => renderCRFFieldInput(field, existingData[field.field_code])).join('');
+
+      showModal(`${formDef.form_code} - ${formDef.form_name}`, `
+        <form id="crf-entry-form">
+          <input type="hidden" id="crf-visit-id" value="${visitId}">
+          <input type="hidden" id="crf-form-code" value="${formCode}">
+          <input type="hidden" id="crf-instance-id" value="${crfInstanceId || ''}">
+          ${fieldsHtml}
+        </form>
+      `, [
+        { label: '취소', onclick: 'closeModal()' },
+        { label: '저장', primary: true, onclick: 'saveCRFData()' }
+      ]);
+    } catch (error) {
+      showToast('양식 로드에 실패했습니다.', 'error');
+    }
+  }
+  window.openCRFEntry = openCRFEntry;
+
+  function renderCRFFieldInput(field, existingValue) {
+    const required = field.is_required ? '<span class="required">*</span>' : '';
+    const value = existingValue || field.default_value || '';
+    let input = '';
+
+    switch (field.field_type) {
+      case 'TEXT':
+        input = `<input type="text" class="form-input" name="${field.field_code}" value="${value}" placeholder="${field.placeholder || ''}">`;
+        break;
+      case 'TEXTAREA':
+        input = `<textarea class="form-input" name="${field.field_code}" rows="3" placeholder="${field.placeholder || ''}">${value}</textarea>`;
+        break;
+      case 'NUMBER':
+        input = `<input type="number" class="form-input" name="${field.field_code}" value="${value}" min="${field.min_value || ''}" max="${field.max_value || ''}" placeholder="${field.placeholder || ''}">`;
+        break;
+      case 'DATE':
+        input = `<input type="date" class="form-input" name="${field.field_code}" value="${value}">`;
+        break;
+      case 'DATETIME':
+        input = `<input type="datetime-local" class="form-input" name="${field.field_code}" value="${value}">`;
+        break;
+      case 'TIME':
+        input = `<input type="time" class="form-input" name="${field.field_code}" value="${value}">`;
+        break;
+      case 'SELECT':
+        const selectOpts = field.options ? JSON.parse(field.options) : [];
+        input = `<select class="form-input" name="${field.field_code}">
+          <option value="">선택하세요</option>
+          ${selectOpts.map(o => `<option value="${o.value}" ${value === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+        </select>`;
+        break;
+      case 'RADIO':
+        const radioOpts = field.options ? JSON.parse(field.options) : [];
+        input = `<div style="display: flex; flex-direction: column; gap: 8px;">
+          ${radioOpts.map(o => `<label style="display: flex; align-items: center; gap: 8px;">
+            <input type="radio" name="${field.field_code}" value="${o.value}" ${value === o.value ? 'checked' : ''}> ${o.label}
+          </label>`).join('')}
+        </div>`;
+        break;
+      case 'CHECKBOX':
+        const checkOpts = field.options ? JSON.parse(field.options) : [];
+        const checkedValues = value ? value.split(',') : [];
+        if (checkOpts.length > 0) {
+          input = `<div style="display: flex; flex-direction: column; gap: 8px;">
+            ${checkOpts.map(o => `<label style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" name="${field.field_code}" value="${o.value}" ${checkedValues.includes(o.value) ? 'checked' : ''}> ${o.label}
+            </label>`).join('')}
+          </div>`;
+        } else {
+          input = `<label style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" name="${field.field_code}" value="1" ${value === '1' ? 'checked' : ''}> ${field.field_name}
+          </label>`;
+        }
+        break;
+      default:
+        input = `<input type="text" class="form-input" name="${field.field_code}" value="${value}">`;
+    }
+
+    return `
+      <div class="form-group">
+        <label class="form-label">${field.field_name} ${required}</label>
+        ${input}
+        ${field.help_text ? `<small style="color: var(--text-muted);">${field.help_text}</small>` : ''}
+      </div>
+    `;
+  }
+
+  async function saveCRFData() {
+    const form = document.getElementById('crf-entry-form');
+    const visitId = document.getElementById('crf-visit-id')?.value;
+    const formCode = document.getElementById('crf-form-code')?.value;
+    const instanceId = document.getElementById('crf-instance-id')?.value;
+
+    if (!form || !visitId || !formCode) {
+      showToast('데이터를 저장할 수 없습니다.', 'error');
+      return;
+    }
+
+    // 폼 데이터 수집
+    const formData = new FormData(form);
+    const data = {};
+    
+    // 체크박스 그룹 처리
+    const checkboxGroups = {};
+    form.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      if (!checkboxGroups[cb.name]) checkboxGroups[cb.name] = [];
+      if (cb.checked) checkboxGroups[cb.name].push(cb.value);
+    });
+
+    formData.forEach((value, key) => {
+      if (!checkboxGroups[key]) {
+        data[key] = value;
+      }
+    });
+
+    // 체크박스 값 병합
+    Object.keys(checkboxGroups).forEach(key => {
+      data[key] = checkboxGroups[key].join(',');
+    });
+
+    try {
+      await api.post(`/visits/${visitId}/crf`, {
+        form_code: formCode,
+        data: data
+      });
+      closeModal();
+      showToast('CRF 데이터가 저장되었습니다.', 'success');
+      loadVisitDetail(visitId);
+    } catch (error) {
+      showToast(error.error || '저장에 실패했습니다.', 'error');
+    }
+  }
+  window.saveCRFData = saveCRFData;
+
+  function viewCRFData(crfInstanceId) {
+    const visit = state.currentVisit;
+    const instance = (visit?.crfInstances || []).find(c => c.id === crfInstanceId);
+    
+    if (!instance) {
+      showToast('데이터를 찾을 수 없습니다.', 'error');
+      return;
+    }
+
+    const dataHtml = (instance.data || []).map(d => `
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid var(--border);"><strong>${d.field_code}</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid var(--border);">${d.field_name || '-'}</td>
+        <td style="padding: 8px; border-bottom: 1px solid var(--border);">${d.field_value || '-'}</td>
+      </tr>
+    `).join('') || '<tr><td colspan="3" style="padding: 16px; text-align: center;">데이터가 없습니다.</td></tr>';
+
+    showModal(`${instance.form_code} - ${instance.form_name}`, `
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="background: var(--bg-tertiary);">
+            <th style="padding: 8px; text-align: left; border-bottom: 1px solid var(--border);">필드 코드</th>
+            <th style="padding: 8px; text-align: left; border-bottom: 1px solid var(--border);">필드명</th>
+            <th style="padding: 8px; text-align: left; border-bottom: 1px solid var(--border);">값</th>
+          </tr>
+        </thead>
+        <tbody>${dataHtml}</tbody>
+      </table>
+      <div style="margin-top: 16px; font-size: 12px; color: var(--text-muted);">
+        상태: ${instance.status} | 입력: ${instance.data_entry_at || '-'} | 수정: ${instance.updated_at || '-'}
+      </div>
+    `, [
+      { label: '닫기', onclick: 'closeModal()' }
+    ]);
+  }
+  window.viewCRFData = viewCRFData;
+
   function editCRF(crfId) {
-    showToast('CRF 편집 기능 준비 중...', 'info');
+    const visit = state.currentVisit;
+    const instance = (visit?.crfInstances || []).find(c => c.id === crfId);
+    if (instance) {
+      openCRFEntry(visit.id, instance.form_code, crfId);
+    }
   }
   window.editCRF = editCRF;
 
