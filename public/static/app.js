@@ -257,6 +257,338 @@
   };
 
   // =====================================================
+  // DATA TABLE COMPONENT - Sorting, Filtering, Pagination
+  // =====================================================
+  const DataTable = {
+    instances: new Map(),
+    
+    create(containerId, config) {
+      const instance = {
+        id: containerId,
+        data: config.data || [],
+        columns: config.columns || [],
+        pageSize: config.pageSize || 10,
+        currentPage: 1,
+        sortColumn: config.defaultSort || null,
+        sortDirection: config.defaultSortDir || 'asc',
+        filters: {},
+        searchQuery: '',
+        onRowClick: config.onRowClick || null,
+        emptyMessage: config.emptyMessage || '데이터가 없습니다.',
+        showSearch: config.showSearch !== false,
+        showPagination: config.showPagination !== false,
+        showFilters: config.showFilters !== false,
+        pageSizeOptions: config.pageSizeOptions || [10, 25, 50, 100],
+        actionColumn: config.actionColumn || null
+      };
+      
+      this.instances.set(containerId, instance);
+      this.render(containerId);
+      return instance;
+    },
+    
+    getData(containerId) {
+      const instance = this.instances.get(containerId);
+      if (!instance) return [];
+      
+      let data = [...instance.data];
+      
+      // Apply search filter
+      if (instance.searchQuery) {
+        const query = instance.searchQuery.toLowerCase();
+        data = data.filter(row => {
+          return instance.columns.some(col => {
+            const value = this.getNestedValue(row, col.field);
+            return value && String(value).toLowerCase().includes(query);
+          });
+        });
+      }
+      
+      // Apply column filters
+      Object.entries(instance.filters).forEach(([field, filterValue]) => {
+        if (filterValue && filterValue !== '') {
+          data = data.filter(row => {
+            const value = this.getNestedValue(row, field);
+            return value && String(value).toLowerCase().includes(filterValue.toLowerCase());
+          });
+        }
+      });
+      
+      // Apply sorting
+      if (instance.sortColumn) {
+        data.sort((a, b) => {
+          const aVal = this.getNestedValue(a, instance.sortColumn);
+          const bVal = this.getNestedValue(b, instance.sortColumn);
+          
+          let comparison = 0;
+          if (aVal === null || aVal === undefined) comparison = 1;
+          else if (bVal === null || bVal === undefined) comparison = -1;
+          else if (typeof aVal === 'number' && typeof bVal === 'number') {
+            comparison = aVal - bVal;
+          } else {
+            comparison = String(aVal).localeCompare(String(bVal), 'ko');
+          }
+          
+          return instance.sortDirection === 'asc' ? comparison : -comparison;
+        });
+      }
+      
+      return data;
+    },
+    
+    getNestedValue(obj, path) {
+      if (!path) return obj;
+      return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+    },
+    
+    getPagedData(containerId) {
+      const instance = this.instances.get(containerId);
+      if (!instance) return [];
+      
+      const data = this.getData(containerId);
+      const start = (instance.currentPage - 1) * instance.pageSize;
+      return data.slice(start, start + instance.pageSize);
+    },
+    
+    getTotalPages(containerId) {
+      const instance = this.instances.get(containerId);
+      if (!instance) return 0;
+      const data = this.getData(containerId);
+      return Math.ceil(data.length / instance.pageSize);
+    },
+    
+    sort(containerId, column) {
+      const instance = this.instances.get(containerId);
+      if (!instance) return;
+      
+      if (instance.sortColumn === column) {
+        instance.sortDirection = instance.sortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        instance.sortColumn = column;
+        instance.sortDirection = 'asc';
+      }
+      instance.currentPage = 1;
+      this.render(containerId);
+    },
+    
+    filter(containerId, field, value) {
+      const instance = this.instances.get(containerId);
+      if (!instance) return;
+      
+      instance.filters[field] = value;
+      instance.currentPage = 1;
+      this.render(containerId);
+    },
+    
+    search(containerId, query) {
+      const instance = this.instances.get(containerId);
+      if (!instance) return;
+      
+      instance.searchQuery = query;
+      instance.currentPage = 1;
+      this.render(containerId);
+    },
+    
+    goToPage(containerId, page) {
+      const instance = this.instances.get(containerId);
+      if (!instance) return;
+      
+      const totalPages = this.getTotalPages(containerId);
+      instance.currentPage = Math.max(1, Math.min(page, totalPages));
+      this.render(containerId);
+    },
+    
+    setPageSize(containerId, size) {
+      const instance = this.instances.get(containerId);
+      if (!instance) return;
+      
+      instance.pageSize = parseInt(size);
+      instance.currentPage = 1;
+      this.render(containerId);
+    },
+    
+    updateData(containerId, newData) {
+      const instance = this.instances.get(containerId);
+      if (!instance) return;
+      
+      instance.data = newData;
+      instance.currentPage = 1;
+      this.render(containerId);
+    },
+    
+    render(containerId) {
+      const container = document.getElementById(containerId);
+      const instance = this.instances.get(containerId);
+      if (!container || !instance) return;
+      
+      const filteredData = this.getData(containerId);
+      const pagedData = this.getPagedData(containerId);
+      const totalPages = this.getTotalPages(containerId);
+      const totalRecords = filteredData.length;
+      const start = (instance.currentPage - 1) * instance.pageSize + 1;
+      const end = Math.min(instance.currentPage * instance.pageSize, totalRecords);
+      
+      // Build unique filter values for each column
+      const filterOptions = {};
+      instance.columns.forEach(col => {
+        if (col.filterable) {
+          const values = new Set();
+          instance.data.forEach(row => {
+            const val = this.getNestedValue(row, col.field);
+            if (val !== null && val !== undefined && val !== '') {
+              values.add(String(val));
+            }
+          });
+          filterOptions[col.field] = Array.from(values).sort();
+        }
+      });
+      
+      container.innerHTML = `
+        ${instance.showSearch || instance.showFilters ? `
+          <div class="dt-toolbar" style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; align-items: center;">
+            ${instance.showSearch ? `
+              <div class="dt-search" style="flex: 1; min-width: 200px; max-width: 300px;">
+                <div style="position: relative;">
+                  <input type="text" 
+                         class="form-input" 
+                         placeholder="검색..." 
+                         value="${sanitizeHTML(instance.searchQuery)}"
+                         oninput="DataTable.search('${containerId}', this.value)"
+                         style="padding-left: 36px;">
+                  <i class="fas fa-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted);"></i>
+                </div>
+              </div>
+            ` : ''}
+            ${instance.showFilters && Object.keys(filterOptions).length > 0 ? `
+              <div class="dt-filters" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                ${instance.columns.filter(col => col.filterable).map(col => `
+                  <select class="form-input" 
+                          style="width: auto; min-width: 120px; padding: 6px 12px; font-size: 13px;"
+                          onchange="DataTable.filter('${containerId}', '${col.field}', this.value)">
+                    <option value="">${col.header || col.field}</option>
+                    ${(filterOptions[col.field] || []).map(val => `
+                      <option value="${sanitizeHTML(val)}" ${instance.filters[col.field] === val ? 'selected' : ''}>${sanitizeHTML(val)}</option>
+                    `).join('')}
+                  </select>
+                `).join('')}
+              </div>
+            ` : ''}
+            <div class="dt-info" style="margin-left: auto; font-size: 13px; color: var(--text-muted);">
+              ${totalRecords > 0 ? `${start}-${end} / ${totalRecords}건` : '0건'}
+            </div>
+          </div>
+        ` : ''}
+        
+        ${totalRecords === 0 ? `
+          <div class="empty-state" style="padding: 40px 20px;">
+            <i class="fas fa-inbox" style="font-size: 48px; color: var(--text-muted); margin-bottom: 12px;"></i>
+            <h3>${sanitizeHTML(instance.emptyMessage)}</h3>
+          </div>
+        ` : `
+          <div class="dt-table-wrapper" style="overflow-x: auto;">
+            <table class="data-table" style="width: 100%;">
+              <thead>
+                <tr>
+                  ${instance.columns.map(col => `
+                    <th style="${col.width ? `width: ${col.width};` : ''} ${col.sortable !== false ? 'cursor: pointer; user-select: none;' : ''}"
+                        ${col.sortable !== false ? `onclick="DataTable.sort('${containerId}', '${col.field}')"` : ''}>
+                      <div style="display: flex; align-items: center; gap: 6px;">
+                        <span>${col.header || col.field}</span>
+                        ${col.sortable !== false ? `
+                          <span class="dt-sort-icon" style="opacity: ${instance.sortColumn === col.field ? '1' : '0.3'}; font-size: 10px;">
+                            ${instance.sortColumn === col.field 
+                              ? (instance.sortDirection === 'asc' ? '<i class="fas fa-sort-up"></i>' : '<i class="fas fa-sort-down"></i>')
+                              : '<i class="fas fa-sort"></i>'
+                            }
+                          </span>
+                        ` : ''}
+                      </div>
+                    </th>
+                  `).join('')}
+                  ${instance.actionColumn ? '<th style="width: 80px;"></th>' : ''}
+                </tr>
+              </thead>
+              <tbody>
+                ${pagedData.map((row, idx) => `
+                  <tr ${instance.onRowClick ? `class="clickable" onclick="${instance.onRowClick}('${row.id || idx}')"` : ''}>
+                    ${instance.columns.map(col => {
+                      let value = this.getNestedValue(row, col.field);
+                      if (col.render) {
+                        value = col.render(value, row);
+                      } else if (col.type === 'date') {
+                        value = ui.formatDate(value);
+                      } else if (col.type === 'datetime') {
+                        value = ui.formatDateTime(value);
+                      } else if (col.type === 'badge') {
+                        value = getStatusBadge(value);
+                      } else {
+                        value = value !== null && value !== undefined ? sanitizeHTML(String(value)) : '-';
+                      }
+                      return `<td style="${col.align ? `text-align: ${col.align};` : ''}">${value}</td>`;
+                    }).join('')}
+                    ${instance.actionColumn ? `<td onclick="event.stopPropagation();">${instance.actionColumn(row)}</td>` : ''}
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          
+          ${instance.showPagination && totalPages > 1 ? `
+            <div class="dt-pagination" style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-light); flex-wrap: wrap; gap: 12px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 13px; color: var(--text-muted);">페이지당</span>
+                <select class="form-input" 
+                        style="width: auto; padding: 4px 8px; font-size: 13px;"
+                        onchange="DataTable.setPageSize('${containerId}', this.value)">
+                  ${instance.pageSizeOptions.map(size => `
+                    <option value="${size}" ${instance.pageSize === size ? 'selected' : ''}>${size}개</option>
+                  `).join('')}
+                </select>
+              </div>
+              <div class="dt-page-buttons" style="display: flex; gap: 4px; align-items: center;">
+                <button class="btn btn-secondary btn-sm" 
+                        onclick="DataTable.goToPage('${containerId}', 1)" 
+                        ${instance.currentPage === 1 ? 'disabled' : ''}
+                        style="padding: 6px 10px;">
+                  <i class="fas fa-angle-double-left"></i>
+                </button>
+                <button class="btn btn-secondary btn-sm" 
+                        onclick="DataTable.goToPage('${containerId}', ${instance.currentPage - 1})" 
+                        ${instance.currentPage === 1 ? 'disabled' : ''}
+                        style="padding: 6px 10px;">
+                  <i class="fas fa-angle-left"></i>
+                </button>
+                <span style="padding: 0 12px; font-size: 13px; color: var(--text-secondary);">
+                  ${instance.currentPage} / ${totalPages}
+                </span>
+                <button class="btn btn-secondary btn-sm" 
+                        onclick="DataTable.goToPage('${containerId}', ${instance.currentPage + 1})" 
+                        ${instance.currentPage === totalPages ? 'disabled' : ''}
+                        style="padding: 6px 10px;">
+                  <i class="fas fa-angle-right"></i>
+                </button>
+                <button class="btn btn-secondary btn-sm" 
+                        onclick="DataTable.goToPage('${containerId}', ${totalPages})" 
+                        ${instance.currentPage === totalPages ? 'disabled' : ''}
+                        style="padding: 6px 10px;">
+                  <i class="fas fa-angle-double-right"></i>
+                </button>
+              </div>
+            </div>
+          ` : ''}
+        `}
+      `;
+    },
+    
+    destroy(containerId) {
+      this.instances.delete(containerId);
+      const container = document.getElementById(containerId);
+      if (container) container.innerHTML = '';
+    }
+  };
+  window.DataTable = DataTable;
+
+  // =====================================================
   // STATUS BADGE
   // =====================================================
   function getStatusBadge(status) {
@@ -737,21 +1069,47 @@
       return;
     }
 
-    container.innerHTML = state.studies.map(study => `
-      <div class="study-item" onclick="navigateTo('study', {studyId: '${study.id}'})">
-        <div class="study-item-header">
-          <span class="study-protocol">${study.protocol_number}</span>
-          ${getStatusBadge(study.status)}
-          ${study.phase ? `<span class="badge badge-draft">Phase ${study.phase}</span>` : ''}
+    // Use DataTable for studies list if more than 5 studies
+    if (state.studies.length > 5) {
+      DataTable.create('studies-list', {
+        data: state.studies,
+        columns: [
+          { field: 'protocol_number', header: 'Protocol', sortable: true, filterable: true,
+            render: (val) => `<strong>${sanitizeHTML(val)}</strong>` },
+          { field: 'title', header: '제목', sortable: true },
+          { field: 'status', header: '상태', sortable: true, filterable: true, type: 'badge' },
+          { field: 'phase', header: 'Phase', sortable: true, filterable: true,
+            render: (val) => val ? `Phase ${val}` : '-' },
+          { field: 'sponsor', header: '스폰서', sortable: true },
+          { field: 'study_start_date', header: '시작일', sortable: true, type: 'date' }
+        ],
+        onRowClick: "(id) => navigateTo('study', {studyId: id})".replace(/'/g, "\\'"),
+        emptyMessage: '등록된 임상시험이 없습니다',
+        pageSize: 10
+      });
+      // Re-attach row click handler properly
+      setTimeout(() => {
+        container.querySelectorAll('tbody tr').forEach((tr, idx) => {
+          tr.onclick = () => navigateTo('study', { studyId: state.studies[idx]?.id });
+        });
+      }, 0);
+    } else {
+      container.innerHTML = state.studies.map(study => `
+        <div class="study-item" onclick="navigateTo('study', {studyId: '${study.id}'})">
+          <div class="study-item-header">
+            <span class="study-protocol">${study.protocol_number}</span>
+            ${getStatusBadge(study.status)}
+            ${study.phase ? `<span class="badge badge-draft">Phase ${study.phase}</span>` : ''}
+          </div>
+          <div class="study-title">${study.title}</div>
+          <div class="study-meta">
+            <span class="study-meta-item"><i class="fas fa-building"></i> ${study.sponsor || '-'}</span>
+            <span class="study-meta-item"><i class="fas fa-calendar"></i> ${ui.formatDate(study.study_start_date)}</span>
+            ${study.therapeutic_area ? `<span class="study-meta-item"><i class="fas fa-heartbeat"></i> ${study.therapeutic_area}</span>` : ''}
+          </div>
         </div>
-        <div class="study-title">${study.title}</div>
-        <div class="study-meta">
-          <span class="study-meta-item"><i class="fas fa-building"></i> ${study.sponsor || '-'}</span>
-          <span class="study-meta-item"><i class="fas fa-calendar"></i> ${ui.formatDate(study.study_start_date)}</span>
-          ${study.therapeutic_area ? `<span class="study-meta-item"><i class="fas fa-heartbeat"></i> ${study.therapeutic_area}</span>` : ''}
-        </div>
-      </div>
-    `).join('');
+      `).join('');
+    }
   }
 
   async function loadDashboardStats() {
@@ -2153,23 +2511,46 @@
             ${ui.canWrite() && site.status === 'ACTIVE' ? `<button class="btn btn-primary btn-sm" onclick="showNewSubjectModal('${site.id}')"><i class="fas fa-user-plus"></i> 피험자 등록</button>` : ''}
           </div>
           <div class="card-body compact">
-            ${subjects.length === 0 ? `<div class="empty-state"><i class="fas fa-users"></i><h3>등록된 피험자가 없습니다</h3>${ui.canWrite() && site.status === 'ACTIVE' ? `<p style="color: var(--text-secondary); margin-bottom: 16px;">새로운 피험자를 등록해 주세요</p><button class="btn btn-primary" onclick="showNewSubjectModal('${site.id}')"><i class="fas fa-user-plus"></i> 피험자 등록</button>` : '<p style="color: var(--text-secondary);">피험자를 등록하려면 ACTIVE 상태의 기관이 필요합니다</p>'}</div>` : `
-              <table class="data-table">
-                <thead><tr><th>Subject ID</th><th>Screening #</th><th>이니셜</th><th>상태</th><th>등록일</th><th></th></tr></thead>
-                <tbody>
-                  ${subjects.map(subj => `
-                    <tr class="clickable" onclick="navigateTo('subject', {subjectId: '${subj.id}'})">
-                      <td><strong>${subj.subject_number}</strong></td>
-                      <td>${subj.screening_number || '-'}</td>
-                      <td>${subj.initials || '-'}</td>
-                      <td>${getStatusBadge(subj.status)}</td>
-                      <td>${ui.formatDate(subj.screening_date || subj.created_at)}</td>
-                      <td style="color: var(--text-muted);"><i class="fas fa-chevron-right"></i></td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
+            <div id="subjects-table-${siteId}"></div>
             `}
+          </div>
+        </div>
+      `;
+
+      // Initialize DataTable for subjects if there are subjects
+      if (subjects.length > 0) {
+        setTimeout(() => {
+          DataTable.create(`subjects-table-${siteId}`, {
+            data: subjects,
+            columns: [
+              { field: 'subject_number', header: 'Subject ID', sortable: true,
+                render: (val) => `<strong>${sanitizeHTML(val)}</strong>` },
+              { field: 'screening_number', header: 'Screening #', sortable: true },
+              { field: 'initials', header: '이니셜', sortable: true },
+              { field: 'status', header: '상태', sortable: true, filterable: true, type: 'badge' },
+              { field: 'screening_date', header: '등록일', sortable: true, type: 'date' }
+            ],
+            emptyMessage: '등록된 피험자가 없습니다',
+            pageSize: 10,
+            actionColumn: () => `<i class="fas fa-chevron-right" style="color: var(--text-muted);"></i>`
+          });
+          // Attach click handlers
+          const tableContainer = document.getElementById(`subjects-table-${siteId}`);
+          if (tableContainer) {
+            tableContainer.querySelectorAll('tbody tr').forEach((tr, idx) => {
+              const pagedData = DataTable.getPagedData(`subjects-table-${siteId}`);
+              if (pagedData[idx]) {
+                tr.style.cursor = 'pointer';
+                tr.onclick = () => navigateTo('subject', { subjectId: pagedData[idx].id });
+              }
+            });
+          }
+        }, 0);
+      } else {
+        const tableContainer = document.getElementById(`subjects-table-${siteId}`);
+        if (tableContainer) {
+          tableContainer.innerHTML = `<div class="empty-state"><i class="fas fa-users"></i><h3>등록된 피험자가 없습니다</h3>${ui.canWrite() && site.status === 'ACTIVE' ? `<p style="color: var(--text-secondary); margin-bottom: 16px;">새로운 피험자를 등록해 주세요</p><button class="btn btn-primary" onclick="showNewSubjectModal('${site.id}')"><i class="fas fa-user-plus"></i> 피험자 등록</button>` : '<p style="color: var(--text-secondary);">피험자를 등록하려면 ACTIVE 상태의 기관이 필요합니다</p>'}</div>`;
+        }
           </div>
         </div>
       `;
@@ -2937,25 +3318,47 @@
             </div>
           </div>
           <div class="card-body compact">
-            ${queries.length === 0 ? `<div class="empty-state"><i class="fas fa-comment-medical"></i><h3>Query가 없습니다</h3></div>` : `
-              <table class="data-table">
-                <thead><tr><th>Query ID</th><th>Subject</th><th>필드</th><th>내용</th><th>상태</th><th>우선순위</th><th>생성일</th><th></th></tr></thead>
-                <tbody>
-                  ${queries.map(q => `
-                    <tr class="clickable" onclick="showQueryDetail('${q.id}')">
-                      <td><strong>${q.id.substring(0, 8)}</strong></td>
-                      <td>${q.subject_number || '-'}</td>
-                      <td>${q.field_name || '-'}</td>
-                      <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${q.query_text || '-'}</td>
-                      <td>${getStatusBadge(q.status)}</td>
-                      <td><span class="badge ${q.priority === 'CRITICAL' ? 'badge-open' : q.priority === 'MAJOR' ? 'badge-pending' : 'badge-draft'}">${q.priority || 'MINOR'}</span></td>
-                      <td>${ui.formatDate(q.created_at)}</td>
-                      <td style="color: var(--text-muted);"><i class="fas fa-chevron-right"></i></td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
+            <div id="queries-table"></div>
             `}
+          </div>
+        </div>
+      `;
+
+      // Initialize DataTable for queries if there are queries
+      if (queries.length > 0) {
+        setTimeout(() => {
+          DataTable.create('queries-table', {
+            data: queries,
+            columns: [
+              { field: 'id', header: 'Query ID', sortable: true, width: '100px',
+                render: (val) => `<strong>${sanitizeHTML(val.substring(0, 8))}</strong>` },
+              { field: 'subject_number', header: 'Subject', sortable: true, filterable: true },
+              { field: 'field_name', header: '필드', sortable: true },
+              { field: 'query_text', header: '내용', sortable: false,
+                render: (val) => `<span style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block;">${sanitizeHTML(val || '-')}</span>` },
+              { field: 'status', header: '상태', sortable: true, filterable: true, type: 'badge' },
+              { field: 'priority', header: '우선순위', sortable: true, filterable: true,
+                render: (val) => `<span class="badge ${val === 'CRITICAL' ? 'badge-open' : val === 'MAJOR' ? 'badge-pending' : 'badge-draft'}">${val || 'MINOR'}</span>` },
+              { field: 'created_at', header: '생성일', sortable: true, type: 'date' }
+            ],
+            emptyMessage: 'Query가 없습니다',
+            pageSize: 15,
+            actionColumn: () => `<i class="fas fa-chevron-right" style="color: var(--text-muted);"></i>`
+          });
+          // Attach click handlers
+          const tableContainer = document.getElementById('queries-table');
+          if (tableContainer) {
+            tableContainer.querySelectorAll('tbody tr').forEach((tr, idx) => {
+              const pagedData = DataTable.getPagedData('queries-table');
+              if (pagedData[idx]) {
+                tr.style.cursor = 'pointer';
+                tr.onclick = () => showQueryDetail(pagedData[idx].id);
+              }
+            });
+          }
+        }, 0);
+      } else {
+        document.getElementById('queries-table').innerHTML = `<div class="empty-state"><i class="fas fa-comment-medical"></i><h3>Query가 없습니다</h3></div>`;
           </div>
         </div>
       `;
@@ -3229,25 +3632,31 @@
             <button class="btn btn-primary btn-sm" onclick="showNewUserModal()"><i class="fas fa-user-plus"></i> 사용자 추가</button>
           </div>
           <div class="card-body compact">
-            <table class="data-table">
-              <thead><tr><th>이름</th><th>이메일</th><th>역할</th><th>상태</th><th>2FA</th><th>마지막 접속</th><th></th></tr></thead>
-              <tbody>
-                ${users.map(u => `
-                  <tr>
-                    <td><strong>${u.name}</strong></td>
-                    <td>${u.email}</td>
-                    <td><span class="badge badge-draft">${ui.getRoleShort(u.role)}</span></td>
-                    <td>${getStatusBadge(u.status)}</td>
-                    <td>${u.two_factor_enabled ? '<i class="fas fa-shield-alt" style="color: var(--success);"></i>' : '-'}</td>
-                    <td>${ui.formatDateTime(u.last_login)}</td>
-                    <td><button class="btn-icon" onclick="showEditUserModal('${u.id}')" title="수정"><i class="fas fa-edit"></i></button></td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
+            <div id="users-table"></div>
           </div>
         </div>
       `;
+
+      // Initialize DataTable for users
+      setTimeout(() => {
+        DataTable.create('users-table', {
+          data: users,
+          columns: [
+            { field: 'name', header: '이름', sortable: true,
+              render: (val) => `<strong>${sanitizeHTML(val)}</strong>` },
+            { field: 'email', header: '이메일', sortable: true },
+            { field: 'role', header: '역할', sortable: true, filterable: true,
+              render: (val) => `<span class="badge badge-draft">${ui.getRoleShort(val)}</span>` },
+            { field: 'status', header: '상태', sortable: true, filterable: true, type: 'badge' },
+            { field: 'two_factor_enabled', header: '2FA', sortable: true,
+              render: (val) => val ? '<i class="fas fa-shield-alt" style="color: var(--success);"></i>' : '-' },
+            { field: 'last_login', header: '마지막 접속', sortable: true, type: 'datetime' }
+          ],
+          emptyMessage: '등록된 사용자가 없습니다',
+          pageSize: 15,
+          actionColumn: (row) => `<button class="btn-icon" onclick="event.stopPropagation(); showEditUserModal('${row.id}')" title="수정"><i class="fas fa-edit"></i></button>`
+        });
+      }, 0);
     } catch (error) {
       mainContent.innerHTML = `<div class="empty-state" style="margin-top: 40px;"><i class="fas fa-exclamation-circle" style="color: var(--danger);"></i><h3>사용자 목록 로드 실패</h3></div>`;
     }
