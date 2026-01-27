@@ -3931,7 +3931,7 @@
 
     try {
       // Use fetch with blob response type for file downloads
-      const url = `${CONFIG.apiBaseUrl}/exports/${format}?studyId=${studyId}`;
+      const url = `/api/exports/${format}?studyId=${studyId}`;
       const response = await fetch(url, {
         method: 'GET',
         headers: {
