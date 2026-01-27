@@ -914,44 +914,10 @@ const htmlTemplate = (title: string, content: string) => `
         color: var(--text-primary);
       }
       
-      /* ===== Mobile Navigation ===== */
-      .mobile-nav {
-        display: none;
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        background: #fff;
-        border-top: 1px solid var(--border);
-        z-index: 100;
-      }
-      
-      .mobile-nav-grid {
-        display: grid;
-        grid-template-columns: repeat(5, 1fr);
-        height: 56px;
-      }
-      
-      .mobile-nav-item {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 2px;
-        color: var(--text-muted);
-        font-size: 10px;
-        cursor: pointer;
-        border: none;
-        background: none;
-      }
-      
-      .mobile-nav-item.active { color: var(--primary); }
-      .mobile-nav-item i { font-size: 18px; }
-      
+      /* ===== Responsive ===== */
       @media (max-width: 768px) {
-        .mobile-nav { display: block; }
         .header-nav { display: none; }
-        .main-container { padding: 12px; padding-bottom: 70px; }
+        .main-container { padding: 12px; }
         .stats-grid { grid-template-columns: repeat(2, 1fr); }
         .quick-actions { grid-template-columns: repeat(2, 1fr); }
         .welcome-meta { display: none; }
@@ -1090,32 +1056,6 @@ app.get('/', (c) => {
         </div>
       </div>
     </div>
-
-    <!-- ===== MOBILE NAVIGATION ===== -->
-    <nav class="mobile-nav" id="mobile-nav">
-      <div class="mobile-nav-grid">
-        <button class="mobile-nav-item active" onclick="navigateTo('dashboard')" data-view="dashboard">
-          <i class="fas fa-th-large"></i>
-          <span>대시보드</span>
-        </button>
-        <button class="mobile-nav-item" onclick="navigateTo('studies')" data-view="studies">
-          <i class="fas fa-flask"></i>
-          <span>Study</span>
-        </button>
-        <button class="mobile-nav-item" onclick="navigateTo('subjects')" data-view="subjects">
-          <i class="fas fa-user-injured"></i>
-          <span>피험자</span>
-        </button>
-        <button class="mobile-nav-item" onclick="navigateTo('queries')" data-view="queries">
-          <i class="fas fa-comment-medical"></i>
-          <span>Query</span>
-        </button>
-        <button class="mobile-nav-item" onclick="showMobileMenu()">
-          <i class="fas fa-ellipsis-h"></i>
-          <span>더보기</span>
-        </button>
-      </div>
-    </nav>
 
     <!-- ===== TOAST CONTAINER ===== -->
     <div id="toast-container" class="toast-container"></div>

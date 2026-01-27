@@ -265,13 +265,11 @@
     const authSection = document.getElementById('auth-section');
     const headerNav = document.getElementById('header-nav');
     const subHeader = document.getElementById('sub-header');
-    const mobileNav = document.getElementById('mobile-nav');
     
     if (state.token && state.user) {
       ui.hide('#login-section');
       ui.show('#dashboard-section');
       if (subHeader) subHeader.style.display = 'flex';
-      if (mobileNav) mobileNav.style.display = 'block';
       
       // Header Navigation
       if (headerNav) {
@@ -328,7 +326,6 @@
       ui.show('#login-section');
       ui.hide('#dashboard-section');
       if (subHeader) subHeader.style.display = 'none';
-      if (mobileNav) mobileNav.style.display = 'none';
       if (headerNav) headerNav.innerHTML = '';
       if (authSection) authSection.innerHTML = '';
     }
@@ -361,11 +358,6 @@
     
     // Update header nav active state
     document.querySelectorAll('.header-nav-item').forEach(item => {
-      item.classList.toggle('active', item.dataset.view === view);
-    });
-    
-    // Update mobile nav active state
-    document.querySelectorAll('.mobile-nav-item').forEach(item => {
       item.classList.toggle('active', item.dataset.view === view);
     });
     
@@ -1327,31 +1319,6 @@
     ]);
   }
   window.showExportOptions = showExportOptions;
-
-  function showMobileMenu() {
-    showModal('메뉴', `
-      <div style="display: grid; gap: 8px;">
-        <button class="btn btn-secondary" style="justify-content: flex-start;" onclick="closeModal(); navigateTo('reports');">
-          <i class="fas fa-chart-bar"></i> 리포트
-        </button>
-        <button class="btn btn-secondary" style="justify-content: flex-start;" onclick="closeModal(); showExportOptions();">
-          <i class="fas fa-file-export"></i> 데이터 Export
-        </button>
-        <button class="btn btn-secondary" style="justify-content: flex-start;" onclick="closeModal(); showSettings();">
-          <i class="fas fa-cog"></i> 설정
-        </button>
-        ${state.user?.role === 'ADMIN' ? `
-        <button class="btn btn-secondary" style="justify-content: flex-start;" onclick="closeModal(); showUserManagement();">
-          <i class="fas fa-users-cog"></i> 사용자 관리
-        </button>
-        ` : ''}
-        <button class="btn btn-secondary" style="justify-content: flex-start; color: var(--danger);" onclick="closeModal(); logout();">
-          <i class="fas fa-sign-out-alt"></i> 로그아웃
-        </button>
-      </div>
-    `, []);
-  }
-  window.showMobileMenu = showMobileMenu;
 
   function showNewStudyModal() {
     showModal('새 Study 등록', `
