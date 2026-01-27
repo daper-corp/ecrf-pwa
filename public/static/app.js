@@ -2512,7 +2512,6 @@
           </div>
           <div class="card-body compact">
             <div id="subjects-table-${siteId}"></div>
-            `}
           </div>
         </div>
       `;
@@ -2551,9 +2550,7 @@
         if (tableContainer) {
           tableContainer.innerHTML = `<div class="empty-state"><i class="fas fa-users"></i><h3>등록된 피험자가 없습니다</h3>${ui.canWrite() && site.status === 'ACTIVE' ? `<p style="color: var(--text-secondary); margin-bottom: 16px;">새로운 피험자를 등록해 주세요</p><button class="btn btn-primary" onclick="showNewSubjectModal('${site.id}')"><i class="fas fa-user-plus"></i> 피험자 등록</button>` : '<p style="color: var(--text-secondary);">피험자를 등록하려면 ACTIVE 상태의 기관이 필요합니다</p>'}</div>`;
         }
-          </div>
-        </div>
-      `;
+      }
     } catch (error) {
       mainContent.innerHTML = `<div class="empty-state" style="margin-top: 40px;"><i class="fas fa-exclamation-circle" style="color: var(--danger);"></i><h3>Site 로드 실패</h3><button class="btn btn-primary" style="margin-top: 16px;" onclick="navigateTo('dashboard')">대시보드로 돌아가기</button></div>`;
     }
@@ -3319,7 +3316,6 @@
           </div>
           <div class="card-body compact">
             <div id="queries-table"></div>
-            `}
           </div>
         </div>
       `;
@@ -3359,9 +3355,7 @@
         }, 0);
       } else {
         document.getElementById('queries-table').innerHTML = `<div class="empty-state"><i class="fas fa-comment-medical"></i><h3>Query가 없습니다</h3></div>`;
-          </div>
-        </div>
-      `;
+      }
     } catch (error) {
       mainContent.innerHTML = `<div class="empty-state" style="margin-top: 40px;"><i class="fas fa-exclamation-circle" style="color: var(--danger);"></i><h3>Query 로드 실패</h3></div>`;
     }
