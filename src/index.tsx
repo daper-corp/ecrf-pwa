@@ -150,744 +150,975 @@ app.get('/api/health', (c) => {
 // FRONTEND PAGES
 // =====================================================
 
-// HTML 템플릿 - Professional eCRF System with Medical-Grade UI
+// HTML 템플릿 - Professional eCRF System (Medidata/Veeva Style)
 const htmlTemplate = (title: string, content: string) => `
 <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="description" content="eCRF - Electronic Case Report Form System | 21 CFR Part 11 Compliant | HIPAA Ready">
-    <meta name="theme-color" content="#0c1222">
-    <title>${title} - eCRF Clinical Data Management</title>
+    <meta name="description" content="eCRF - Electronic Case Report Form System">
+    <meta name="theme-color" content="#0066B3">
+    <title>${title} | eCRF Clinical</title>
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <link rel="stylesheet" href="/static/mobile.css">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              'sans': ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-            },
-            colors: {
-              'clinical': { 
-                50: '#f0f9ff', 100: '#e0f2fe', 200: '#bae6fd', 300: '#7dd3fc', 
-                400: '#38bdf8', 500: '#0ea5e9', 600: '#0284c7', 700: '#0369a1', 
-                800: '#075985', 900: '#0c4a6e', 950: '#082f49' 
-              },
-              'medical': { 
-                50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1',
-                400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155',
-                800: '#1e293b', 900: '#0f172a', 950: '#020617'
-              },
-              'success': { 50: '#ecfdf5', 100: '#d1fae5', 200: '#a7f3d0', 500: '#10b981', 600: '#059669', 700: '#047857' },
-              'warning': { 50: '#fffbeb', 100: '#fef3c7', 200: '#fde68a', 500: '#f59e0b', 600: '#d97706' },
-              'danger': { 50: '#fef2f2', 100: '#fee2e2', 200: '#fecaca', 500: '#ef4444', 600: '#dc2626', 700: '#b91c1c' },
-              'query': { 50: '#fefce8', 100: '#fef9c3', 500: '#eab308', 600: '#ca8a04' },
-              'locked': { 50: '#faf5ff', 100: '#f3e8ff', 500: '#a855f7', 600: '#9333ea' }
-            }
-          }
-        }
-      }
-    </script>
     <style>
-      * { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+      /* ===== Professional eCRF System Styles ===== */
+      * { margin: 0; padding: 0; box-sizing: border-box; }
       
-      /* Custom scrollbar - Medical-grade subtle */
-      ::-webkit-scrollbar { width: 8px; height: 8px; }
-      ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; border: 2px solid #f1f5f9; }
-      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      :root {
+        --primary: #0066B3;
+        --primary-dark: #004d86;
+        --secondary: #5c6bc0;
+        --success: #2e7d32;
+        --warning: #ed6c02;
+        --danger: #d32f2f;
+        --text-primary: #1a1a1a;
+        --text-secondary: #5f6368;
+        --text-muted: #80868b;
+        --bg-primary: #ffffff;
+        --bg-secondary: #f8f9fa;
+        --bg-tertiary: #f1f3f4;
+        --border: #dadce0;
+        --border-light: #e8eaed;
+      }
       
-      /* ===== PROFESSIONAL CARD SYSTEM ===== */
-      .card { 
-        background: white; 
-        border-radius: 16px; 
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
-        border: 1px solid #e2e8f0;
-        overflow: hidden;
-        transition: all 0.2s ease;
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        color: var(--text-primary);
+        background: var(--bg-secondary);
+        min-height: 100vh;
       }
-      .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-color: #cbd5e1; }
-      .card-header { 
-        padding: 16px 20px; 
-        border-bottom: 1px solid #f1f5f9; 
-        background: linear-gradient(180deg, #fafbfc 0%, #f8fafc 100%);
-      }
-      .card-body { padding: 20px; }
       
-      /* ===== CLINICAL STATUS BADGES ===== */
-      .badge { 
-        display: inline-flex; 
-        align-items: center; 
-        padding: 4px 10px; 
-        border-radius: 20px; 
-        font-size: 11px; 
-        font-weight: 600; 
-        letter-spacing: 0.02em;
-        text-transform: uppercase;
-      }
-      .badge-active { background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); color: #047857; }
-      .badge-completed { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); color: #1d4ed8; }
-      .badge-pending { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); color: #b45309; }
-      .badge-locked { background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%); color: #7c3aed; }
-      .badge-error { background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); color: #dc2626; }
-      .badge-draft { background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); color: #475569; }
-      
-      /* ===== MEDICAL-GRADE BUTTONS ===== */
-      .btn { 
-        display: inline-flex; 
-        align-items: center; 
-        justify-content: center; 
-        padding: 10px 18px; 
-        font-size: 14px; 
-        font-weight: 500; 
-        border-radius: 10px; 
-        transition: all 0.15s ease;
-        cursor: pointer;
-        border: none;
-        outline: none;
-      }
-      .btn:focus { box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3); }
-      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-      .btn-primary { 
-        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); 
-        color: white; 
-        box-shadow: 0 2px 4px rgba(37, 99, 235, 0.3);
-      }
-      .btn-primary:hover { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); transform: translateY(-1px); }
-      .btn-secondary { 
-        background: white; 
-        color: #374151; 
-        border: 1px solid #d1d5db;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-      }
-      .btn-secondary:hover { background: #f9fafb; border-color: #9ca3af; }
-      .btn-success { 
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%); 
-        color: white;
-        box-shadow: 0 2px 4px rgba(5, 150, 105, 0.3);
-      }
-      .btn-success:hover { background: linear-gradient(135deg, #059669 0%, #047857 100%); }
-      .btn-danger { 
-        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); 
-        color: white;
-        box-shadow: 0 2px 4px rgba(220, 38, 38, 0.3);
-      }
-      .btn-danger:hover { background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); }
-      .btn-ghost { background: transparent; color: #6b7280; }
-      .btn-ghost:hover { background: #f3f4f6; color: #111827; }
-      .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 8px; }
-      .btn-lg { padding: 14px 24px; font-size: 16px; border-radius: 12px; }
-      .btn-icon { padding: 10px; width: 40px; height: 40px; }
-      
-      /* ===== CLINICAL FORM INPUTS ===== */
-      .form-input { 
-        width: 100%; 
-        padding: 12px 16px; 
-        font-size: 14px; 
-        border: 1.5px solid #e2e8f0; 
-        border-radius: 10px; 
-        background: #fafbfc;
-        transition: all 0.15s ease;
-      }
-      .form-input:focus { 
-        border-color: #3b82f6; 
-        background: white;
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); 
-        outline: none;
-      }
-      .form-input:disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
-      .form-input.error { border-color: #ef4444; background: #fef2f2; }
-      .form-input.error:focus { box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15); }
-      .form-input.valid { border-color: #10b981; background: #ecfdf5; }
-      .form-label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
-      .form-label .required { color: #ef4444; margin-left: 2px; }
-      .form-helper { margin-top: 6px; font-size: 12px; color: #6b7280; }
-      .form-error { margin-top: 6px; font-size: 12px; color: #ef4444; display: flex; align-items: center; gap: 4px; }
-      
-      /* ===== DATA TABLE - Medical Grade ===== */
-      .table-container { 
-        overflow-x: auto; 
-        border-radius: 12px; 
-        border: 1px solid #e2e8f0;
-        background: white;
-      }
-      .data-table { width: 100%; border-collapse: collapse; }
-      .data-table thead { background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%); }
-      .data-table th { 
-        padding: 14px 16px; 
-        text-align: left; 
-        font-size: 11px; 
-        font-weight: 700; 
-        color: #475569; 
-        text-transform: uppercase; 
-        letter-spacing: 0.05em;
-        border-bottom: 2px solid #e2e8f0;
-      }
-      .data-table td { 
-        padding: 14px 16px; 
-        font-size: 14px; 
-        color: #374151; 
-        border-bottom: 1px solid #f1f5f9;
-      }
-      .data-table tbody tr { transition: background 0.15s ease; }
-      .data-table tbody tr:hover { background: #f8fafc; }
-      .data-table tbody tr:last-child td { border-bottom: none; }
-      
-      /* ===== CLINICAL STATS CARD ===== */
-      .stat-card { 
-        background: white; 
-        border-radius: 16px; 
-        padding: 20px;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        position: relative;
-        overflow: hidden;
-      }
-      .stat-card::before {
-        content: '';
-        position: absolute;
+      /* ===== Header ===== */
+      .app-header {
+        background: var(--primary);
+        height: 48px;
+        position: sticky;
         top: 0;
-        left: 0;
-        right: 0;
-        height: 3px;
-        background: linear-gradient(90deg, #3b82f6, #8b5cf6);
-        opacity: 0;
-        transition: opacity 0.2s ease;
-      }
-      .stat-card:hover::before { opacity: 1; }
-      .stat-value { font-size: 28px; font-weight: 700; color: #0f172a; line-height: 1; }
-      .stat-label { font-size: 13px; color: #64748b; margin-top: 6px; font-weight: 500; }
-      .stat-icon { 
-        width: 48px; 
-        height: 48px; 
-        border-radius: 12px; 
-        display: flex; 
-        align-items: center; 
-        justify-content: center;
-        font-size: 20px;
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
       }
       
-      /* ===== PROGRESS INDICATORS ===== */
-      .progress-bar { 
-        height: 6px; 
-        background: #e2e8f0; 
-        border-radius: 3px; 
-        overflow: hidden;
-      }
-      .progress-fill { 
-        height: 100%; 
-        border-radius: 3px; 
-        transition: width 0.5s ease;
-        background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);
-      }
-      .progress-fill.success { background: linear-gradient(90deg, #10b981 0%, #34d399 100%); }
-      .progress-fill.warning { background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%); }
-      .progress-fill.danger { background: linear-gradient(90deg, #ef4444 0%, #f87171 100%); }
-      
-      /* ===== MODAL SYSTEM ===== */
-      .modal-overlay { 
-        position: fixed; 
-        inset: 0; 
-        background: rgba(15, 23, 42, 0.7); 
-        backdrop-filter: blur(4px);
-        z-index: 50; 
-        display: flex; 
-        align-items: center; 
-        justify-content: center;
-        padding: 16px;
-        animation: fadeIn 0.2s ease;
-      }
-      .modal-content { 
-        background: white; 
-        border-radius: 20px; 
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-        max-width: 520px; 
-        width: 100%; 
-        max-height: 90vh; 
-        overflow: hidden;
-        animation: slideUp 0.3s ease;
-      }
-      .modal-header { 
-        padding: 20px 24px; 
-        border-bottom: 1px solid #f1f5f9; 
-        display: flex; 
-        align-items: center; 
-        justify-content: space-between;
-        background: linear-gradient(180deg, #fafbfc 0%, #f8fafc 100%);
-      }
-      .modal-body { padding: 24px; overflow-y: auto; max-height: 60vh; }
-      .modal-footer { 
-        padding: 16px 24px; 
-        border-top: 1px solid #f1f5f9; 
-        display: flex; 
-        justify-content: flex-end; 
-        gap: 12px;
-        background: #f8fafc;
+      .header-brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #fff;
+        font-weight: 600;
+        font-size: 15px;
+        cursor: pointer;
       }
       
-      /* ===== TOAST NOTIFICATIONS ===== */
-      .toast { 
-        position: fixed; 
-        bottom: 80px; 
-        left: 50%; 
-        transform: translateX(-50%); 
-        padding: 14px 20px; 
-        border-radius: 12px; 
-        box-shadow: 0 10px 25px rgba(0,0,0,0.15);
-        z-index: 100; 
-        display: flex; 
-        align-items: center; 
-        gap: 12px; 
-        font-size: 14px; 
+      .header-brand i { font-size: 18px; }
+      
+      .header-nav {
+        display: flex;
+        align-items: center;
+        margin-left: 32px;
+        gap: 4px;
+      }
+      
+      .header-nav-item {
+        color: rgba(255,255,255,0.85);
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 13px;
         font-weight: 500;
-        animation: toastSlideUp 0.3s ease;
+        cursor: pointer;
+        transition: background 0.15s;
+        text-decoration: none;
       }
-      .toast-success { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; }
-      .toast-error { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; }
-      .toast-warning { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; }
-      .toast-info { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; }
       
-      /* ===== PROFESSIONAL HEADER ===== */
-      .app-header { 
-        background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%); 
-        color: white; 
-        position: sticky; 
-        top: 0; 
-        z-index: 40;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      .header-nav-item:hover { background: rgba(255,255,255,0.1); }
+      .header-nav-item.active { background: rgba(255,255,255,0.15); color: #fff; }
+      
+      .header-right {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
       }
-      .header-brand { display: flex; align-items: center; gap: 12px; cursor: pointer; }
-      .header-brand-icon { 
-        width: 42px; 
-        height: 42px; 
-        background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); 
-        border-radius: 12px; 
-        display: flex; 
-        align-items: center; 
+      
+      .header-user {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        color: #fff;
+        font-size: 13px;
+      }
+      
+      .header-user:hover { background: rgba(255,255,255,0.1); }
+      
+      .user-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.2);
+        display: flex;
+        align-items: center;
         justify-content: center;
-        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        font-size: 11px;
+        font-weight: 600;
       }
       
-      /* ===== COMPLIANCE INDICATORS ===== */
-      .compliance-badge { 
-        display: inline-flex; 
-        align-items: center; 
-        gap: 6px; 
-        padding: 6px 12px; 
-        background: rgba(16, 185, 129, 0.15); 
-        color: #34d399; 
-        font-size: 11px; 
-        font-weight: 600; 
+      /* ===== Secondary Nav (Breadcrumb) ===== */
+      .sub-header {
+        background: #fff;
+        border-bottom: 1px solid var(--border);
+        padding: 0 16px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+      }
+      
+      .breadcrumb {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 13px;
+      }
+      
+      .breadcrumb a {
+        color: var(--primary);
+        text-decoration: none;
+      }
+      
+      .breadcrumb a:hover { text-decoration: underline; }
+      .breadcrumb span { color: var(--text-muted); }
+      
+      /* ===== Main Layout ===== */
+      .main-container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      
+      /* ===== Cards ===== */
+      .card {
+        background: #fff;
+        border: 1px solid var(--border);
         border-radius: 8px;
-        border: 1px solid rgba(16, 185, 129, 0.2);
+        margin-bottom: 16px;
       }
       
-      /* ===== CRF FORM SYSTEM ===== */
-      .crf-section { 
-        background: white; 
-        border-radius: 16px; 
-        border: 1px solid #e2e8f0; 
-        margin-bottom: 16px;
-        overflow: hidden;
-      }
-      .crf-section-header { 
-        padding: 16px 20px; 
-        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); 
-        border-bottom: 1px solid #e2e8f0;
+      .card-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border-light);
         display: flex;
         align-items: center;
         justify-content: space-between;
       }
-      .crf-section-title { font-size: 14px; font-weight: 700; color: #1e293b; }
-      .crf-field { padding: 16px 20px; border-bottom: 1px solid #f1f5f9; }
-      .crf-field:last-child { border-bottom: none; }
-      .crf-field-label { 
-        font-size: 13px; 
-        font-weight: 600; 
-        color: #475569; 
+      
+      .card-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+      
+      .card-body { padding: 20px; }
+      .card-body.compact { padding: 0; }
+      
+      /* ===== Buttons ===== */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 500;
+        border-radius: 4px;
+        border: none;
+        cursor: pointer;
+        transition: all 0.15s;
+        text-decoration: none;
+      }
+      
+      .btn-primary {
+        background: var(--primary);
+        color: #fff;
+      }
+      .btn-primary:hover { background: var(--primary-dark); }
+      
+      .btn-secondary {
+        background: #fff;
+        color: var(--text-primary);
+        border: 1px solid var(--border);
+      }
+      .btn-secondary:hover { background: var(--bg-tertiary); }
+      
+      .btn-danger {
+        background: var(--danger);
+        color: #fff;
+      }
+      .btn-danger:hover { background: #c62828; }
+      
+      .btn-sm {
+        padding: 5px 10px;
+        font-size: 12px;
+      }
+      
+      .btn-icon {
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--text-secondary);
+        border: none;
+        cursor: pointer;
+      }
+      .btn-icon:hover { background: var(--bg-tertiary); }
+      
+      /* ===== Forms ===== */
+      .form-group { margin-bottom: 16px; }
+      
+      .form-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        margin-bottom: 6px;
+      }
+      
+      .form-label .required { color: var(--danger); margin-left: 2px; }
+      
+      .form-input {
+        width: 100%;
+        padding: 10px 12px;
+        font-size: 14px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: #fff;
+        color: var(--text-primary);
+        transition: border-color 0.15s, box-shadow 0.15s;
+      }
+      
+      .form-input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(0, 102, 179, 0.1);
+      }
+      
+      .form-input::placeholder { color: var(--text-muted); }
+      
+      .form-input.error { border-color: var(--danger); }
+      
+      .form-hint {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 4px;
+      }
+      
+      /* ===== Tables ===== */
+      .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      
+      .data-table th {
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 500;
+        color: var(--text-secondary);
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+      }
+      
+      .data-table td {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border-light);
+        color: var(--text-primary);
+      }
+      
+      .data-table tbody tr:hover { background: var(--bg-secondary); }
+      .data-table tbody tr.clickable { cursor: pointer; }
+      
+      /* ===== Badges ===== */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 8px;
+        font-size: 11px;
+        font-weight: 500;
+        border-radius: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+      }
+      
+      .badge-active { background: #e8f5e9; color: #2e7d32; }
+      .badge-draft { background: var(--bg-tertiary); color: var(--text-secondary); }
+      .badge-pending { background: #fff3e0; color: #e65100; }
+      .badge-completed { background: #e3f2fd; color: #1565c0; }
+      .badge-locked { background: #f3e5f5; color: #7b1fa2; }
+      .badge-open { background: #ffebee; color: #c62828; }
+      .badge-closed { background: var(--bg-tertiary); color: var(--text-muted); }
+      
+      /* ===== Stats ===== */
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+      
+      .stat-card {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+      }
+      
+      .stat-label {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+      }
+      
+      .stat-value {
+        font-size: 28px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+      
+      .stat-change {
+        font-size: 12px;
+        margin-top: 4px;
+      }
+      .stat-change.positive { color: var(--success); }
+      .stat-change.negative { color: var(--danger); }
+      
+      /* ===== Dropdown ===== */
+      .dropdown { position: relative; }
+      
+      .dropdown-menu {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        min-width: 200px;
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        z-index: 1000;
+        display: none;
+        overflow: hidden;
+      }
+      
+      .dropdown-menu.show { display: block; }
+      
+      .dropdown-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        font-size: 13px;
+        color: var(--text-primary);
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      
+      .dropdown-item:hover { background: var(--bg-secondary); }
+      .dropdown-item i { width: 16px; color: var(--text-muted); }
+      
+      .dropdown-divider {
+        height: 1px;
+        background: var(--border-light);
+        margin: 4px 0;
+      }
+      
+      /* ===== Toast ===== */
+      .toast-container {
+        position: fixed;
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 2000;
+      }
+      
+      .toast {
+        background: #323232;
+        color: #fff;
+        padding: 12px 20px;
+        border-radius: 4px;
+        font-size: 14px;
         margin-bottom: 8px;
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
       }
       
-      /* ===== SUBJECT CARDS ===== */
-      .subject-card { 
-        background: white; 
-        border-radius: 16px; 
-        border: 1px solid #e2e8f0; 
-        padding: 16px;
-        transition: all 0.2s ease;
-        cursor: pointer;
-      }
-      .subject-card:hover { 
-        border-color: #3b82f6; 
-        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
-        transform: translateY(-2px);
-      }
-      .subject-id { font-size: 18px; font-weight: 700; color: #0f172a; }
+      .toast.success { background: var(--success); }
+      .toast.error { background: var(--danger); }
+      .toast.warning { background: var(--warning); }
       
-      /* ===== USER AVATAR ===== */
-      .avatar { 
-        width: 40px; 
-        height: 40px; 
-        border-radius: 12px; 
-        display: flex; 
-        align-items: center; 
+      /* ===== Modal ===== */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.4);
+        display: flex;
+        align-items: center;
         justify-content: center;
-        font-weight: 700;
+        z-index: 1000;
+      }
+      
+      .modal {
+        background: #fff;
+        border-radius: 8px;
+        max-width: 500px;
+        width: 90%;
+        max-height: 90vh;
+        overflow: hidden;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      }
+      
+      .modal-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      
+      .modal-title {
+        font-size: 16px;
+        font-weight: 600;
+      }
+      
+      .modal-close {
+        width: 28px;
+        height: 28px;
+        border: none;
+        background: none;
+        cursor: pointer;
+        color: var(--text-muted);
+        border-radius: 4px;
+      }
+      .modal-close:hover { background: var(--bg-tertiary); }
+      
+      .modal-body { padding: 20px; }
+      
+      .modal-footer {
+        padding: 16px 20px;
+        border-top: 1px solid var(--border-light);
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        background: var(--bg-secondary);
+      }
+      
+      /* ===== Empty State ===== */
+      .empty-state {
+        text-align: center;
+        padding: 48px 20px;
+        color: var(--text-muted);
+      }
+      
+      .empty-state i {
+        font-size: 48px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+      }
+      
+      .empty-state h3 {
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+      }
+      
+      .empty-state p { font-size: 14px; }
+      
+      /* ===== Loading ===== */
+      .loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 48px;
+        color: var(--text-muted);
+      }
+      
+      .spinner {
+        width: 32px;
+        height: 32px;
+        border: 3px solid var(--border);
+        border-top-color: var(--primary);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-bottom: 12px;
+      }
+      
+      @keyframes spin { to { transform: rotate(360deg); } }
+      
+      /* ===== Login Page ===== */
+      .login-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg-secondary);
+        padding: 20px;
+      }
+      
+      .login-container {
+        width: 100%;
+        max-width: 400px;
+      }
+      
+      .login-header {
+        text-align: center;
+        margin-bottom: 32px;
+      }
+      
+      .login-logo {
+        width: 48px;
+        height: 48px;
+        background: var(--primary);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px;
+      }
+      
+      .login-logo i { color: #fff; font-size: 24px; }
+      
+      .login-header h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 4px;
+      }
+      
+      .login-header p {
+        color: var(--text-muted);
         font-size: 14px;
-        color: white;
       }
-      .avatar-sm { width: 32px; height: 32px; font-size: 12px; border-radius: 10px; }
-      .avatar-lg { width: 56px; height: 56px; font-size: 20px; border-radius: 16px; }
       
-      /* ===== ANIMATIONS ===== */
-      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-      @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-      @keyframes toastSlideUp { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } }
-      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-      @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      .animate-fadeIn { animation: fadeIn 0.3s ease; }
-      .animate-slideUp { animation: slideUp 0.3s ease; }
-      .animate-pulse { animation: pulse 2s infinite; }
-      .animate-spin { animation: spin 1s linear infinite; }
+      .login-card {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 24px;
+      }
       
-      /* ===== SKELETON LOADING ===== */
-      .skeleton { background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%); background-size: 200% 100%; animation: skeleton-loading 1.5s infinite; border-radius: 8px; }
-      @keyframes skeleton-loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+      .compliance-badges {
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+        margin-bottom: 24px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid var(--border-light);
+      }
       
-      /* ===== RESPONSIVE UTILITIES ===== */
+      .compliance-badge {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        background: var(--bg-secondary);
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--text-secondary);
+      }
+      
+      .compliance-badge i { color: var(--success); }
+      
+      .test-accounts {
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border-light);
+      }
+      
+      .test-accounts h4 {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-muted);
+        margin-bottom: 12px;
+        text-align: center;
+      }
+      
+      .test-accounts-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      
+      .test-account {
+        padding: 10px;
+        background: var(--bg-secondary);
+        border-radius: 4px;
+        font-size: 11px;
+      }
+      
+      .test-account-role {
+        font-weight: 500;
+        color: var(--text-primary);
+        margin-bottom: 2px;
+      }
+      
+      .test-account-email {
+        color: var(--text-muted);
+        font-family: monospace;
+      }
+      
+      .login-footer {
+        text-align: center;
+        margin-top: 24px;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      
+      /* ===== Welcome Section ===== */
+      .welcome-banner {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px 24px;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      
+      .welcome-info {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      
+      .welcome-avatar {
+        width: 48px;
+        height: 48px;
+        background: var(--primary);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 600;
+        font-size: 16px;
+      }
+      
+      .welcome-text h2 {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 2px;
+      }
+      
+      .welcome-text p {
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+      
+      .welcome-meta {
+        text-align: right;
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+      
+      /* ===== Study List ===== */
+      .study-item {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border-light);
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      
+      .study-item:hover { background: var(--bg-secondary); }
+      .study-item:last-child { border-bottom: none; }
+      
+      .study-item-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+      
+      .study-protocol {
+        font-weight: 600;
+        color: var(--primary);
+      }
+      
+      .study-title {
+        color: var(--text-secondary);
+        font-size: 13px;
+        margin-bottom: 8px;
+      }
+      
+      .study-meta {
+        display: flex;
+        gap: 16px;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      
+      .study-meta-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      
+      /* ===== Quick Actions ===== */
+      .quick-actions {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+      }
+      
+      .quick-action {
+        padding: 16px;
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.15s;
+        text-align: center;
+      }
+      
+      .quick-action:hover {
+        border-color: var(--primary);
+        background: #f5f9ff;
+      }
+      
+      .quick-action i {
+        font-size: 20px;
+        color: var(--primary);
+        margin-bottom: 8px;
+        display: block;
+      }
+      
+      .quick-action span {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-primary);
+      }
+      
+      /* ===== Mobile Navigation ===== */
+      .mobile-nav {
+        display: none;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: #fff;
+        border-top: 1px solid var(--border);
+        z-index: 100;
+      }
+      
+      .mobile-nav-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        height: 56px;
+      }
+      
+      .mobile-nav-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        color: var(--text-muted);
+        font-size: 10px;
+        cursor: pointer;
+        border: none;
+        background: none;
+      }
+      
+      .mobile-nav-item.active { color: var(--primary); }
+      .mobile-nav-item i { font-size: 18px; }
+      
       @media (max-width: 768px) {
-        .stat-value { font-size: 24px; }
-        .card { border-radius: 12px; }
-        .modal-content { border-radius: 16px; margin: 16px; }
+        .mobile-nav { display: block; }
+        .header-nav { display: none; }
+        .main-container { padding: 12px; padding-bottom: 70px; }
+        .stats-grid { grid-template-columns: repeat(2, 1fr); }
+        .quick-actions { grid-template-columns: repeat(2, 1fr); }
+        .welcome-meta { display: none; }
       }
+      
+      /* ===== Utility ===== */
+      .hidden { display: none !important; }
+      .text-center { text-align: center; }
+      .mt-4 { margin-top: 16px; }
+      .mb-4 { margin-bottom: 16px; }
     </style>
 </head>
-<body class="bg-slate-50 min-h-screen font-sans antialiased">
+<body>
     <div id="app">${content}</div>
     <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="/static/app.js"></script>
 </body>
 </html>
 `;
 
-// 메인 페이지 - Professional eCRF Clinical Data Management System
+// 메인 페이지
 app.get('/', (c) => {
   const content = `
-    <!-- ===== PROFESSIONAL HEADER ===== -->
-    <header class="app-header">
-      <!-- Primary Navigation Bar -->
-      <div class="border-b border-white/10">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div class="flex justify-between items-center h-16">
-            <!-- Brand Logo -->
-            <div class="header-brand" onclick="navigateTo('dashboard')">
-              <div class="header-brand-icon">
-                <i class="fas fa-heartbeat text-white text-lg"></i>
-              </div>
-              <div>
-                <h1 class="text-xl font-bold text-white tracking-tight">eCRF</h1>
-                <p class="text-[10px] text-slate-400 -mt-0.5 font-medium hidden sm:block">Clinical Data Management</p>
-              </div>
-            </div>
-            
-            <!-- Center: System Status (Desktop) -->
-            <div id="header-stats" class="hidden lg:flex items-center gap-3">
-              <div class="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-lg border border-white/10">
-                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span class="text-xs text-slate-300 font-medium">System Active</span>
-              </div>
-              <div class="compliance-badge">
-                <i class="fas fa-shield-alt text-xs"></i>
-                <span>21 CFR Part 11</span>
-              </div>
-            </div>
-            
-            <!-- Right: User Section -->
-            <div id="auth-section" class="flex items-center gap-3">
-              <!-- Populated by JS -->
-            </div>
-          </div>
-        </div>
+    <!-- ===== HEADER ===== -->
+    <header class="app-header" id="app-header">
+      <div class="header-brand" onclick="navigateTo('dashboard')">
+        <i class="fas fa-database"></i>
+        <span>eCRF Clinical</span>
       </div>
       
-      <!-- Secondary Navigation (Breadcrumb Bar) -->
-      <div id="sub-nav" class="hidden" style="background: rgba(30, 41, 59, 0.5);">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div class="flex items-center justify-between h-10">
-            <!-- Breadcrumb Navigation -->
-            <div id="breadcrumb" class="flex items-center gap-1 text-sm">
-              <button class="flex items-center gap-1.5 px-2 py-1 rounded-md text-slate-300 hover:text-white hover:bg-white/10 transition" onclick="navigateTo('dashboard')">
-                <i class="fas fa-home text-xs"></i>
-                <span class="hidden sm:inline">대시보드</span>
-              </button>
-            </div>
-            
-            <!-- Connection Status -->
-            <div class="flex items-center gap-3">
-              <div id="online-status" class="flex items-center gap-2 text-xs">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                <span class="text-slate-400">Online</span>
-              </div>
-              <div id="pending-sync" class="hidden flex items-center gap-2 text-xs text-amber-400">
-                <i class="fas fa-sync fa-spin"></i>
-                <span>Syncing...</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <nav class="header-nav" id="header-nav"></nav>
+      
+      <div class="header-right" id="auth-section"></div>
     </header>
 
-    <!-- ===== MAIN CONTENT AREA ===== -->
-    <main class="min-h-[calc(100vh-120px)] pb-20 md:pb-8">
-      
-      <!-- LOGIN SECTION -->
-      <div id="login-section" class="hidden">
-        <div class="min-h-screen flex items-center justify-center py-12 px-4" style="background: linear-gradient(135deg, #0c1222 0%, #1a2642 50%, #0f172a 100%);">
-          <!-- Decorative Elements -->
-          <div class="absolute inset-0 overflow-hidden pointer-events-none">
-            <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl"></div>
-            <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl"></div>
+    <!-- ===== SUB HEADER ===== -->
+    <div class="sub-header" id="sub-header" style="display: none;">
+      <div class="breadcrumb" id="breadcrumb">
+        <a href="#" onclick="navigateTo('dashboard')">Home</a>
+      </div>
+    </div>
+
+    <!-- ===== LOGIN SECTION ===== -->
+    <div id="login-section" class="login-page hidden">
+      <div class="login-container">
+        <div class="login-header">
+          <div class="login-logo">
+            <i class="fas fa-database"></i>
+          </div>
+          <h1>eCRF Clinical</h1>
+          <p>Electronic Case Report Form System</p>
+        </div>
+        
+        <div class="login-card">
+          <div class="compliance-badges">
+            <div class="compliance-badge">
+              <i class="fas fa-shield-alt"></i>
+              <span>21 CFR Part 11</span>
+            </div>
+            <div class="compliance-badge">
+              <i class="fas fa-lock"></i>
+              <span>HIPAA Ready</span>
+            </div>
           </div>
           
-          <div class="relative w-full max-w-md">
-            <!-- Logo & Title -->
-            <div class="text-center mb-10">
-              <div class="inline-flex items-center justify-center w-24 h-24 rounded-3xl mb-8" style="background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); box-shadow: 0 20px 40px rgba(59, 130, 246, 0.4);">
-                <i class="fas fa-heartbeat text-white text-4xl"></i>
-              </div>
-              <h1 class="text-4xl font-bold text-white mb-3">eCRF System</h1>
-              <p class="text-slate-400 text-lg">Clinical Data Management Platform</p>
+          <form id="login-form">
+            <div class="form-group">
+              <label class="form-label">
+                이메일 <span class="required">*</span>
+              </label>
+              <input type="email" id="login-email" class="form-input" placeholder="user@example.com" required autocomplete="email">
             </div>
             
-            <!-- Login Card -->
-            <div class="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/20">
-              <!-- Compliance Badge -->
-              <div class="flex items-center justify-center gap-3 mb-8 pb-6 border-b border-gray-100">
-                <div class="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-full">
-                  <i class="fas fa-shield-alt text-emerald-600 text-sm"></i>
-                  <span class="text-xs font-semibold text-emerald-700">21 CFR Part 11</span>
-                </div>
-                <div class="flex items-center gap-2 px-3 py-1.5 bg-blue-50 rounded-full">
-                  <i class="fas fa-lock text-blue-600 text-sm"></i>
-                  <span class="text-xs font-semibold text-blue-700">HIPAA Ready</span>
-                </div>
-              </div>
-              
-              <!-- Login Form -->
-              <form id="login-form" class="space-y-6">
-                <div>
-                  <label class="form-label">
-                    이메일 <span class="required">*</span>
-                  </label>
-                  <div class="relative">
-                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                      <i class="fas fa-user"></i>
-                    </span>
-                    <input type="email" id="login-email" required
-                      class="form-input pl-12"
-                      placeholder="user@example.com"
-                      autocomplete="email">
-                  </div>
-                </div>
-                
-                <div>
-                  <label class="form-label">
-                    비밀번호 <span class="required">*</span>
-                  </label>
-                  <div class="relative">
-                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                      <i class="fas fa-lock"></i>
-                    </span>
-                    <input type="password" id="login-password" required
-                      class="form-input pl-12"
-                      placeholder="••••••••"
-                      autocomplete="current-password">
-                  </div>
-                </div>
-                
-                <!-- 2FA Code (conditionally shown) -->
-                <div id="login-2fa-section" class="hidden">
-                  <label class="form-label">
-                    2단계 인증 코드 <span class="required">*</span>
-                  </label>
-                  <div class="relative">
-                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                      <i class="fas fa-shield-alt"></i>
-                    </span>
-                    <input type="text" id="login-2fa-code" maxlength="6"
-                      class="form-input pl-12 text-center tracking-widest text-lg font-mono"
-                      placeholder="000000">
-                  </div>
-                </div>
-                
-                <!-- Error Message -->
-                <div id="login-error" class="hidden p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 flex items-center gap-3">
-                  <i class="fas fa-exclamation-circle text-red-500"></i>
-                  <span></span>
-                </div>
-                
-                <button type="submit" class="btn btn-primary w-full btn-lg" style="height: 52px;">
-                  <i class="fas fa-sign-in-alt mr-2"></i>
-                  <span>로그인</span>
-                </button>
-              </form>
-              
-              <!-- Test Accounts Info -->
-              <div class="mt-8 pt-6 border-t border-gray-100">
-                <p class="text-xs text-gray-500 text-center mb-4 font-medium">테스트 계정 정보</p>
-                <div class="grid grid-cols-2 gap-3">
-                  <div class="p-3 bg-gradient-to-br from-gray-50 to-slate-50 rounded-xl border border-gray-100">
-                    <div class="flex items-center gap-2 mb-1">
-                      <span class="w-2 h-2 rounded-full bg-red-400"></span>
-                      <p class="text-xs font-semibold text-gray-700">관리자</p>
-                    </div>
-                    <p class="text-xs text-gray-500 font-mono">admin@ecrf.local</p>
-                  </div>
-                  <div class="p-3 bg-gradient-to-br from-gray-50 to-slate-50 rounded-xl border border-gray-100">
-                    <div class="flex items-center gap-2 mb-1">
-                      <span class="w-2 h-2 rounded-full bg-purple-400"></span>
-                      <p class="text-xs font-semibold text-gray-700">연구책임자</p>
-                    </div>
-                    <p class="text-xs text-gray-500 font-mono">pi@hospital1.local</p>
-                  </div>
-                  <div class="p-3 bg-gradient-to-br from-gray-50 to-slate-50 rounded-xl border border-gray-100">
-                    <div class="flex items-center gap-2 mb-1">
-                      <span class="w-2 h-2 rounded-full bg-blue-400"></span>
-                      <p class="text-xs font-semibold text-gray-700">CRC</p>
-                    </div>
-                    <p class="text-xs text-gray-500 font-mono">crc@hospital1.local</p>
-                  </div>
-                  <div class="p-3 bg-gradient-to-br from-gray-50 to-slate-50 rounded-xl border border-gray-100">
-                    <div class="flex items-center gap-2 mb-1">
-                      <span class="w-2 h-2 rounded-full bg-green-400"></span>
-                      <p class="text-xs font-semibold text-gray-700">모니터</p>
-                    </div>
-                    <p class="text-xs text-gray-500 font-mono">cra@sponsor.local</p>
-                  </div>
-                </div>
-                <p class="text-center text-xs text-gray-400 mt-3">
-                  <i class="fas fa-key mr-1"></i> 비밀번호: <code class="bg-gray-100 px-1.5 py-0.5 rounded">Test1234!</code>
-                </p>
-              </div>
+            <div class="form-group">
+              <label class="form-label">
+                비밀번호 <span class="required">*</span>
+              </label>
+              <input type="password" id="login-password" class="form-input" placeholder="비밀번호 입력" required autocomplete="current-password">
             </div>
             
-            <!-- Footer -->
-            <p class="text-center text-slate-500 text-xs mt-8">
-              © 2024 eCRF Clinical Data Management System. All rights reserved.
+            <div id="login-2fa-section" class="form-group hidden">
+              <label class="form-label">
+                2FA 코드 <span class="required">*</span>
+              </label>
+              <input type="text" id="login-2fa-code" class="form-input" placeholder="000000" maxlength="6" style="text-align: center; letter-spacing: 4px; font-size: 18px; font-family: monospace;">
+            </div>
+            
+            <div id="login-error" class="hidden" style="padding: 12px; background: #ffebee; border-radius: 4px; color: #c62828; font-size: 13px; margin-bottom: 16px;">
+            </div>
+            
+            <button type="submit" class="btn btn-primary" style="width: 100%; height: 44px;">
+              로그인
+            </button>
+          </form>
+          
+          <div class="test-accounts">
+            <h4>테스트 계정</h4>
+            <div class="test-accounts-grid">
+              <div class="test-account">
+                <div class="test-account-role">관리자</div>
+                <div class="test-account-email">admin@ecrf.local</div>
+              </div>
+              <div class="test-account">
+                <div class="test-account-role">연구책임자</div>
+                <div class="test-account-email">pi@hospital1.local</div>
+              </div>
+              <div class="test-account">
+                <div class="test-account-role">CRC</div>
+                <div class="test-account-email">crc@hospital1.local</div>
+              </div>
+              <div class="test-account">
+                <div class="test-account-role">모니터</div>
+                <div class="test-account-email">cra@sponsor.local</div>
+              </div>
+            </div>
+            <p style="text-align: center; margin-top: 12px; font-size: 12px; color: var(--text-muted);">
+              비밀번호: <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 3px;">Test1234!</code>
             </p>
           </div>
         </div>
-      </div>
-
-      <!-- DASHBOARD SECTION -->
-      <div id="dashboard-section" class="hidden">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div id="main-content">
-            <!-- Loading Placeholder -->
-            <div class="flex flex-col items-center justify-center py-20">
-              <div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-6" style="background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);">
-                <i class="fas fa-heartbeat text-white text-2xl animate-pulse"></i>
-              </div>
-              <div class="w-10 h-10 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin mb-4"></div>
-              <p class="text-gray-500 font-medium">임상 데이터를 불러오는 중...</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </main>
-
-    <!-- ===== MOBILE BOTTOM NAVIGATION ===== -->
-    <nav class="mobile-nav fixed bottom-0 left-0 right-0 z-50 md:hidden" id="mobile-nav" style="background: white; border-top: 1px solid #e2e8f0; box-shadow: 0 -4px 12px rgba(0,0,0,0.05);">
-      <div class="grid grid-cols-5 h-16">
-        <button class="mobile-nav-item flex flex-col items-center justify-center transition-colors" onclick="navigateTo('dashboard')" data-view="dashboard">
-          <i class="fas fa-th-large text-lg text-gray-400"></i>
-          <span class="text-[10px] mt-1 font-semibold text-gray-500">대시보드</span>
-        </button>
-        <button class="mobile-nav-item flex flex-col items-center justify-center transition-colors" onclick="navigateTo('studies')" data-view="studies">
-          <i class="fas fa-flask text-lg text-gray-400"></i>
-          <span class="text-[10px] mt-1 font-semibold text-gray-500">Study</span>
-        </button>
-        <button class="mobile-nav-item flex flex-col items-center justify-center transition-colors" onclick="navigateTo('subjects')" data-view="subjects">
-          <i class="fas fa-user-injured text-lg text-gray-400"></i>
-          <span class="text-[10px] mt-1 font-semibold text-gray-500">피험자</span>
-        </button>
-        <button class="mobile-nav-item flex flex-col items-center justify-center transition-colors relative" onclick="navigateTo('queries')" data-view="queries">
-          <i class="fas fa-comment-medical text-lg text-gray-400"></i>
-          <span class="text-[10px] mt-1 font-semibold text-gray-500">Query</span>
-          <span id="query-badge" class="hidden absolute top-1 right-1/4 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">0</span>
-        </button>
-        <button class="mobile-nav-item flex flex-col items-center justify-center transition-colors" onclick="showMobileMenu()" data-view="more">
-          <i class="fas fa-bars text-lg text-gray-400"></i>
-          <span class="text-[10px] mt-1 font-semibold text-gray-500">메뉴</span>
-        </button>
-      </div>
-    </nav>
-
-    <!-- ===== MOBILE MENU OVERLAY ===== -->
-    <div id="mobile-menu-overlay" class="fixed inset-0 z-[60] hidden" onclick="closeMobileMenu()" style="background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(4px);">
-      <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 pb-8 animate-slideUp" onclick="event.stopPropagation()">
-        <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6"></div>
         
-        <!-- Quick Actions Grid -->
-        <div class="grid grid-cols-4 gap-4 mb-6">
-          <button onclick="navigateTo('reports'); closeMobileMenu();" class="flex flex-col items-center p-4 rounded-2xl hover:bg-gray-50 transition">
-            <div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);">
-              <i class="fas fa-chart-pie text-xl text-blue-600"></i>
-            </div>
-            <span class="text-xs font-semibold text-gray-700">리포트</span>
-          </button>
-          <button onclick="navigateTo('exports'); closeMobileMenu();" class="flex flex-col items-center p-4 rounded-2xl hover:bg-gray-50 transition">
-            <div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);">
-              <i class="fas fa-file-export text-xl text-emerald-600"></i>
-            </div>
-            <span class="text-xs font-semibold text-gray-700">Export</span>
-          </button>
-          <button onclick="navigateTo('audit'); closeMobileMenu();" class="flex flex-col items-center p-4 rounded-2xl hover:bg-gray-50 transition">
-            <div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style="background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);">
-              <i class="fas fa-history text-xl text-purple-600"></i>
-            </div>
-            <span class="text-xs font-semibold text-gray-700">감사로그</span>
-          </button>
-          <button onclick="offline.showSyncDashboard(); closeMobileMenu();" class="flex flex-col items-center p-4 rounded-2xl hover:bg-gray-50 transition">
-            <div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);">
-              <i class="fas fa-sync text-xl text-amber-600"></i>
-            </div>
-            <span class="text-xs font-semibold text-gray-700">동기화</span>
-          </button>
-        </div>
-        
-        <!-- Menu Items -->
-        <div class="border-t border-gray-100 pt-4 space-y-1">
-          <button onclick="showSettings(); closeMobileMenu();" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-gray-50 transition">
-            <div class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
-              <i class="fas fa-cog text-gray-600"></i>
-            </div>
-            <span class="font-medium text-gray-700">설정</span>
-            <i class="fas fa-chevron-right ml-auto text-gray-300"></i>
-          </button>
-          <button onclick="logout(); closeMobileMenu();" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-red-50 transition text-red-600">
-            <div class="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
-              <i class="fas fa-sign-out-alt text-red-500"></i>
-            </div>
-            <span class="font-medium">로그아웃</span>
-          </button>
+        <div class="login-footer">
+          © 2024 eCRF Clinical Data Management System
         </div>
       </div>
     </div>
 
+    <!-- ===== DASHBOARD SECTION ===== -->
+    <div id="dashboard-section" class="hidden">
+      <div class="main-container">
+        <div id="main-content">
+          <div class="loading">
+            <div class="spinner"></div>
+            <span>데이터를 불러오는 중...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MOBILE NAVIGATION ===== -->
+    <nav class="mobile-nav" id="mobile-nav">
+      <div class="mobile-nav-grid">
+        <button class="mobile-nav-item active" onclick="navigateTo('dashboard')" data-view="dashboard">
+          <i class="fas fa-th-large"></i>
+          <span>대시보드</span>
+        </button>
+        <button class="mobile-nav-item" onclick="navigateTo('studies')" data-view="studies">
+          <i class="fas fa-flask"></i>
+          <span>Study</span>
+        </button>
+        <button class="mobile-nav-item" onclick="navigateTo('subjects')" data-view="subjects">
+          <i class="fas fa-user-injured"></i>
+          <span>피험자</span>
+        </button>
+        <button class="mobile-nav-item" onclick="navigateTo('queries')" data-view="queries">
+          <i class="fas fa-comment-medical"></i>
+          <span>Query</span>
+        </button>
+        <button class="mobile-nav-item" onclick="showMobileMenu()">
+          <i class="fas fa-ellipsis-h"></i>
+          <span>더보기</span>
+        </button>
+      </div>
+    </nav>
+
     <!-- ===== TOAST CONTAINER ===== -->
-    <div id="toast-container" class="fixed bottom-24 md:bottom-8 left-4 right-4 md:left-auto md:right-8 md:w-96 z-[100] space-y-3"></div>
+    <div id="toast-container" class="toast-container"></div>
 
     <!-- ===== MODAL CONTAINER ===== -->
     <div id="modal-container"></div>
@@ -899,13 +1130,13 @@ app.get('/', (c) => {
 // 404 페이지
 app.notFound((c) => {
   return c.html(htmlTemplate('페이지를 찾을 수 없음', `
-    <div class="min-h-[60vh] flex items-center justify-center">
-      <div class="text-center">
-        <i class="fas fa-exclamation-triangle text-6xl text-yellow-500 mb-4"></i>
-        <h2 class="text-2xl font-bold text-gray-900 mb-2">404 - 페이지를 찾을 수 없습니다</h2>
-        <p class="text-gray-600 mb-6">요청하신 페이지가 존재하지 않습니다.</p>
-        <a href="/" class="bg-ecrf-blue text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">
-          <i class="fas fa-home mr-2"></i> 홈으로 돌아가기
+    <div class="main-container">
+      <div class="empty-state" style="margin-top: 80px;">
+        <i class="fas fa-exclamation-triangle"></i>
+        <h3>404 - 페이지를 찾을 수 없습니다</h3>
+        <p>요청하신 페이지가 존재하지 않습니다.</p>
+        <a href="/" class="btn btn-primary" style="margin-top: 16px;">
+          <i class="fas fa-home"></i> 홈으로 돌아가기
         </a>
       </div>
     </div>
