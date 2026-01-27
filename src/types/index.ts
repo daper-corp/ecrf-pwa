@@ -333,42 +333,175 @@ export interface ElectronicSignature {
 }
 
 // =====================================================
-// AUDIT TRAIL TYPES
+// AUDIT TRAIL TYPES (21 CFR Part 11 Compliant)
 // =====================================================
 
+/**
+ * 21 CFR Part 11 준수 감사 액션 유형
+ * - 모든 데이터 변경 사항 추적
+ * - 전자 서명 및 인증 이벤트 기록
+ * - 시스템 관리 활동 로깅
+ */
 export type AuditAction = 
-  | 'CREATE' 
-  | 'READ' 
-  | 'UPDATE' 
-  | 'DELETE' 
-  | 'LOGIN' 
-  | 'LOGOUT' 
-  | 'SIGN' 
-  | 'LOCK' 
-  | 'UNLOCK' 
-  | 'QUERY_OPEN' 
-  | 'QUERY_ANSWER' 
-  | 'QUERY_CLOSE';
+  // 데이터 CRUD 작업
+  | 'CREATE'              // 레코드 생성
+  | 'READ'                // 레코드 조회 (민감한 데이터)
+  | 'UPDATE'              // 레코드 수정
+  | 'DELETE'              // 레코드 삭제 (소프트 삭제)
+  // 인증 관련
+  | 'LOGIN'               // 로그인 성공
+  | 'LOGIN_FAILED'        // 로그인 실패
+  | 'LOGOUT'              // 로그아웃
+  | 'PASSWORD_CHANGE'     // 비밀번호 변경
+  | 'PASSWORD_RESET'      // 비밀번호 재설정
+  | '2FA_ENABLED'         // 2단계 인증 활성화
+  | '2FA_DISABLED'        // 2단계 인증 비활성화
+  | '2FA_VERIFIED'        // 2단계 인증 검증 성공
+  | '2FA_FAILED'          // 2단계 인증 검증 실패
+  | 'SESSION_TIMEOUT'     // 세션 타임아웃
+  // 전자 서명 (21 CFR Part 11 핵심)
+  | 'SIGN'                // 전자 서명
+  | 'SIGN_REJECTED'       // 서명 거부
+  | 'COUNTERSIGN'         // 추가 서명 (PI 서명 등)
+  // 데이터 잠금/해제
+  | 'LOCK'                // 데이터 잠금
+  | 'UNLOCK'              // 데이터 잠금 해제
+  | 'FREEZE'              // 데이터 동결
+  | 'UNFREEZE'            // 데이터 동결 해제
+  // Query 관리
+  | 'QUERY_OPEN'          // Query 생성
+  | 'QUERY_ANSWER'        // Query 응답
+  | 'QUERY_CLOSE'         // Query 종료
+  | 'QUERY_REOPEN'        // Query 재개
+  | 'QUERY_CANCEL'        // Query 취소
+  // CRF 워크플로우
+  | 'CRF_SAVE'            // CRF 저장 (자동/수동)
+  | 'CRF_SUBMIT'          // CRF 제출
+  | 'CRF_VERIFY'          // CRF 검증 (SDV)
+  | 'CRF_REVIEW'          // CRF 리뷰
+  | 'CRF_APPROVE'         // CRF 승인
+  | 'CRF_REJECT'          // CRF 반려
+  // 데이터 내보내기
+  | 'EXPORT'              // 데이터 내보내기
+  | 'PRINT'               // 인쇄
+  | 'DOWNLOAD'            // 파일 다운로드
+  // 시스템 관리
+  | 'USER_CREATE'         // 사용자 생성
+  | 'USER_UPDATE'         // 사용자 정보 수정
+  | 'USER_DEACTIVATE'     // 사용자 비활성화
+  | 'USER_ACTIVATE'       // 사용자 활성화
+  | 'ROLE_CHANGE'         // 역할 변경
+  | 'PERMISSION_GRANT'    // 권한 부여
+  | 'PERMISSION_REVOKE'   // 권한 회수
+  // 연구 관리
+  | 'STUDY_CREATE'        // 연구 생성
+  | 'STUDY_UPDATE'        // 연구 수정
+  | 'STUDY_LOCK'          // 연구 잠금
+  | 'STUDY_CLOSE'         // 연구 종료
+  | 'SITE_ACTIVATE'       // 기관 활성화
+  | 'SITE_DEACTIVATE'     // 기관 비활성화
+  // 피험자 관리
+  | 'SUBJECT_ENROLL'      // 피험자 등록
+  | 'SUBJECT_RANDOMIZE'   // 피험자 무작위 배정
+  | 'SUBJECT_WITHDRAW'    // 피험자 철회
+  | 'SUBJECT_COMPLETE'    // 피험자 완료
+  // 시스템 이벤트
+  | 'SYSTEM_CONFIG'       // 시스템 설정 변경
+  | 'BACKUP'              // 데이터 백업
+  | 'RESTORE'             // 데이터 복원
+  | 'SYNC'                // 데이터 동기화 (오프라인)
+  | 'CONFLICT_RESOLVE';   // 동기화 충돌 해결
 
+/**
+ * 감사 이벤트 심각도 수준
+ */
+export type AuditSeverity = 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL';
+
+/**
+ * 감사 이벤트 카테고리
+ */
+export type AuditCategory = 
+  | 'AUTHENTICATION'      // 인증
+  | 'AUTHORIZATION'       // 권한
+  | 'DATA_ENTRY'          // 데이터 입력
+  | 'DATA_MODIFICATION'   // 데이터 수정
+  | 'DATA_ACCESS'         // 데이터 조회
+  | 'SIGNATURE'           // 전자 서명
+  | 'WORKFLOW'            // 워크플로우
+  | 'QUERY'               // Query 관리
+  | 'EXPORT'              // 내보내기
+  | 'ADMINISTRATION'      // 관리
+  | 'SYSTEM';             // 시스템
+
+/**
+ * 21 CFR Part 11 준수 감사 로그 인터페이스
+ */
 export interface AuditLog {
-  id: string;
-  user_id: string;
-  user_name: string;
-  user_role: string;
-  timestamp: string;
-  action: AuditAction;
-  table_name: string;
-  record_id: string;
-  field_name: string | null;
-  old_value: string | null;
-  new_value: string | null;
-  reason_for_change: string | null;
-  ip_address: string | null;
-  session_id: string | null;
-  user_agent: string | null;
-  study_id: string | null;
-  site_id: string | null;
-  subject_id: string | null;
+  // 기본 식별자
+  id: string;                           // 고유 감사 로그 ID
+  sequence_number?: number;             // 순차 번호 (불변)
+  
+  // 사용자 정보 (WHO)
+  user_id: string;                      // 사용자 ID
+  user_name: string;                    // 사용자 이름 (스냅샷)
+  user_email?: string;                  // 사용자 이메일 (스냅샷)
+  user_role: string;                    // 사용자 역할 (스냅샷)
+  
+  // 시간 정보 (WHEN)
+  timestamp: string;                    // ISO 8601 타임스탬프 (UTC)
+  timezone?: string;                    // 사용자 타임존
+  
+  // 액션 정보 (WHAT)
+  action: AuditAction;                  // 수행된 액션
+  category?: AuditCategory;             // 액션 카테고리
+  severity?: AuditSeverity;             // 심각도
+  
+  // 대상 정보 (WHERE)
+  table_name: string;                   // 테이블/엔티티 이름
+  record_id: string;                    // 레코드 ID
+  field_name: string | null;            // 필드 이름 (필드 수준 변경 시)
+  
+  // 변경 내용 (CHANGE DETAILS)
+  old_value: string | null;             // 이전 값
+  new_value: string | null;             // 새 값
+  change_summary?: string;              // 변경 요약 (다중 필드 변경 시)
+  
+  // 사유 및 맥락 (WHY - 21 CFR Part 11 필수)
+  reason_for_change: string | null;     // 변경 사유 (규정 필수)
+  comment?: string;                     // 추가 설명
+  
+  // 클라이언트 정보 (CONTEXT)
+  ip_address: string | null;            // IP 주소
+  session_id: string | null;            // 세션 ID
+  user_agent: string | null;            // 브라우저/클라이언트 정보
+  device_type?: string;                 // 장치 유형 (desktop/mobile/tablet)
+  browser?: string;                     // 브라우저 정보
+  os?: string;                          // 운영 체제
+  
+  // 연구 컨텍스트 (CLINICAL TRIAL CONTEXT)
+  study_id: string | null;              // 연구 ID
+  study_name?: string;                  // 연구 이름 (스냅샷)
+  protocol_number?: string;             // 프로토콜 번호
+  site_id: string | null;               // 기관 ID
+  site_name?: string;                   // 기관 이름 (스냅샷)
+  subject_id: string | null;            // 피험자 ID
+  subject_number?: string;              // 피험자 번호
+  visit_id?: string;                    // 방문 ID
+  visit_name?: string;                  // 방문 이름
+  form_id?: string;                     // CRF 폼 ID
+  form_name?: string;                   // CRF 폼 이름
+  
+  // 서명 정보 (ELECTRONIC SIGNATURE)
+  signature_id?: string;                // 관련 전자 서명 ID
+  signature_meaning?: string;           // 서명 의미 (예: "승인", "검토 완료")
+  
+  // 무결성 검증 (INTEGRITY)
+  checksum?: string;                    // 데이터 무결성 체크섬
+  previous_log_id?: string;             // 이전 로그 ID (체이닝)
+  
+  // 메타데이터
+  created_at?: string;                  // 로그 생성 시간
+  is_system_generated?: boolean;        // 시스템 자동 생성 여부
 }
 
 // =====================================================

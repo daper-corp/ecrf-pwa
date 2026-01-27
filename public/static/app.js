@@ -254,6 +254,20 @@
     canManage() {
       return state.user && ['ADMIN', 'DM'].includes(state.user.role);
     },
+
+    hasPermission(permission) {
+      const rolePermissions = {
+        ADMIN: ['VIEW_AUDIT', 'EXPORT_DATA', 'MANAGE_USERS', 'MANAGE_STUDIES', 'VIEW_ALL'],
+        DM: ['VIEW_AUDIT', 'EXPORT_DATA', 'MANAGE_STUDIES'],
+        PI: ['VIEW_AUDIT', 'EXPORT_DATA'],
+        CRA: ['VIEW_AUDIT', 'EXPORT_DATA'],
+        SUB_INV: ['VIEW_AUDIT'],
+        CRC: ['VIEW_AUDIT'],
+      };
+      if (!state.user) return false;
+      const perms = rolePermissions[state.user.role] || [];
+      return perms.includes(permission);
+    },
   };
 
   // =====================================================
@@ -3583,6 +3597,10 @@
             </div>
           </div>
         `;
+      } else if (type === 'audit') {
+        // Redirect to full Audit Trail viewer
+        loadAuditTrail();
+        return;
       } else {
         reportHtml = `
           <div class="card">
@@ -3600,6 +3618,500 @@
     }
   }
   window.generateReport = generateReport;
+
+  // =====================================================
+  // AUDIT TRAIL VIEWER (21 CFR Part 11 Compliant)
+  // =====================================================
+  let auditState = {
+    currentPage: 1,
+    pageSize: 50,
+    filters: {},
+    sortBy: 'timestamp',
+    sortOrder: 'desc',
+  };
+
+  async function loadAuditTrail() {
+    const mainContent = document.getElementById('main-content');
+    if (!mainContent) return;
+
+    // Check permission
+    if (!ui.hasPermission('VIEW_AUDIT')) {
+      mainContent.innerHTML = `
+        <div class="empty-state" style="margin-top: 60px;">
+          <i class="fas fa-lock" style="color: var(--danger);"></i>
+          <h3>접근 권한 없음</h3>
+          <p>Audit Trail 조회 권한이 필요합니다.</p>
+        </div>
+      `;
+      return;
+    }
+
+    mainContent.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="fas fa-history" style="margin-right: 8px;"></i>Audit Trail (21 CFR Part 11)</span>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary btn-sm" onclick="showAuditStatistics()"><i class="fas fa-chart-bar"></i> 통계</button>
+            <button class="btn btn-secondary btn-sm" onclick="exportAuditTrail()"><i class="fas fa-download"></i> Export</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <!-- Filters -->
+          <div id="audit-filters" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; padding: 16px; background: var(--bg-secondary); border-radius: 8px;">
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label" style="font-size: 11px;">Study</label>
+              <select id="audit-filter-study" class="form-input" style="padding: 6px 10px; font-size: 13px;" onchange="applyAuditFilters()">
+                <option value="">전체</option>
+                ${state.studies.map(s => `<option value="${s.id}">${sanitizeHTML(s.protocol_number)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label" style="font-size: 11px;">카테고리</label>
+              <select id="audit-filter-category" class="form-input" style="padding: 6px 10px; font-size: 13px;" onchange="applyAuditFilters()">
+                <option value="">전체</option>
+                <option value="AUTHENTICATION">인증</option>
+                <option value="DATA_ENTRY">데이터 입력</option>
+                <option value="DATA_MODIFICATION">데이터 수정</option>
+                <option value="SIGNATURE">전자 서명</option>
+                <option value="WORKFLOW">워크플로우</option>
+                <option value="QUERY">Query</option>
+                <option value="EXPORT">내보내기</option>
+                <option value="ADMINISTRATION">관리</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label" style="font-size: 11px;">액션</label>
+              <select id="audit-filter-action" class="form-input" style="padding: 6px 10px; font-size: 13px;" onchange="applyAuditFilters()">
+                <option value="">전체</option>
+                <option value="CREATE">생성</option>
+                <option value="UPDATE">수정</option>
+                <option value="DELETE">삭제</option>
+                <option value="LOGIN">로그인</option>
+                <option value="LOGOUT">로그아웃</option>
+                <option value="LOGIN_FAILED">로그인 실패</option>
+                <option value="SIGN">전자 서명</option>
+                <option value="LOCK">잠금</option>
+                <option value="UNLOCK">잠금 해제</option>
+                <option value="EXPORT">내보내기</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label" style="font-size: 11px;">시작일</label>
+              <input type="date" id="audit-filter-start" class="form-input" style="padding: 6px 10px; font-size: 13px;" onchange="applyAuditFilters()">
+            </div>
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label" style="font-size: 11px;">종료일</label>
+              <input type="date" id="audit-filter-end" class="form-input" style="padding: 6px 10px; font-size: 13px;" onchange="applyAuditFilters()">
+            </div>
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label" style="font-size: 11px;">검색</label>
+              <input type="text" id="audit-filter-search" class="form-input" style="padding: 6px 10px; font-size: 13px;" placeholder="사용자, 레코드 ID..." onkeyup="debounce(() => applyAuditFilters(), 300)()">
+            </div>
+          </div>
+          
+          <!-- Results -->
+          <div id="audit-results">
+            <div class="loading"><div class="spinner"></div><span>감사 로그를 불러오는 중...</span></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    fetchAuditLogs();
+  }
+  window.loadAuditTrail = loadAuditTrail;
+
+  async function fetchAuditLogs() {
+    const resultsDiv = document.getElementById('audit-results');
+    if (!resultsDiv) return;
+
+    try {
+      const params = new URLSearchParams();
+      params.set('page', auditState.currentPage.toString());
+      params.set('pageSize', auditState.pageSize.toString());
+      params.set('sortBy', auditState.sortBy);
+      params.set('sortOrder', auditState.sortOrder);
+
+      if (auditState.filters.studyId) params.set('studyId', auditState.filters.studyId);
+      if (auditState.filters.action) params.set('action', auditState.filters.action);
+      if (auditState.filters.startDate) params.set('startDate', auditState.filters.startDate);
+      if (auditState.filters.endDate) params.set('endDate', auditState.filters.endDate);
+      if (auditState.filters.search) params.set('search', auditState.filters.search);
+
+      const result = await api.get(`/audit/logs?${params.toString()}`);
+      const { data: logs, pagination } = result;
+
+      if (!logs || logs.length === 0) {
+        resultsDiv.innerHTML = `
+          <div class="empty-state">
+            <i class="fas fa-clipboard-list"></i>
+            <h3>감사 로그가 없습니다</h3>
+            <p>선택한 조건에 맞는 로그가 없습니다.</p>
+          </div>
+        `;
+        return;
+      }
+
+      resultsDiv.innerHTML = `
+        <!-- Summary -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-light);">
+          <span style="font-size: 13px; color: var(--text-secondary);">
+            총 <strong>${pagination.total.toLocaleString()}</strong>건 중 ${(pagination.page - 1) * pagination.pageSize + 1}-${Math.min(pagination.page * pagination.pageSize, pagination.total)}건 표시
+          </span>
+          <select id="audit-page-size" class="form-input" style="width: auto; padding: 4px 8px; font-size: 12px;" onchange="changeAuditPageSize(this.value)">
+            <option value="25" ${auditState.pageSize === 25 ? 'selected' : ''}>25개</option>
+            <option value="50" ${auditState.pageSize === 50 ? 'selected' : ''}>50개</option>
+            <option value="100" ${auditState.pageSize === 100 ? 'selected' : ''}>100개</option>
+          </select>
+        </div>
+
+        <!-- Table -->
+        <div style="overflow-x: auto;">
+          <table class="data-table" style="font-size: 12px;">
+            <thead>
+              <tr>
+                <th style="width: 140px; cursor: pointer;" onclick="sortAuditLogs('timestamp')">
+                  시간 ${auditState.sortBy === 'timestamp' ? (auditState.sortOrder === 'desc' ? '↓' : '↑') : ''}
+                </th>
+                <th style="width: 100px;">사용자</th>
+                <th style="width: 80px;">역할</th>
+                <th style="width: 100px;">액션</th>
+                <th style="width: 90px;">대상</th>
+                <th style="width: 100px;">레코드</th>
+                <th>변경 내용</th>
+                <th style="width: 60px;">상세</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${logs.map(log => `
+                <tr class="audit-row" data-log-id="${log.id}">
+                  <td style="font-family: monospace; font-size: 11px; white-space: nowrap;">
+                    ${formatAuditTimestamp(log.timestamp)}
+                  </td>
+                  <td title="${sanitizeHTML(log.user_name)}">
+                    <span style="max-width: 100px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                      ${sanitizeHTML(log.user_name)}
+                    </span>
+                  </td>
+                  <td><span class="badge badge-draft" style="font-size: 10px;">${ui.getRoleShort(log.user_role)}</span></td>
+                  <td>
+                    <span class="badge ${getAuditActionBadgeClass(log.severity)}" style="font-size: 10px;">
+                      ${sanitizeHTML(log.action_label || log.action)}
+                    </span>
+                  </td>
+                  <td style="font-size: 11px;">${sanitizeHTML(log.table_label || log.table_name)}</td>
+                  <td style="font-family: monospace; font-size: 10px;" title="${sanitizeHTML(log.record_id)}">
+                    ${truncateText(log.record_id, 12)}
+                  </td>
+                  <td style="font-size: 11px;">
+                    ${formatAuditChange(log)}
+                  </td>
+                  <td>
+                    <button class="btn-icon" onclick="showAuditDetail('${log.id}')" title="상세 보기">
+                      <i class="fas fa-eye"></i>
+                    </button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div style="display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-light);">
+          <button class="btn btn-secondary btn-sm" ${pagination.page <= 1 ? 'disabled' : ''} onclick="changeAuditPage(1)">
+            <i class="fas fa-angle-double-left"></i>
+          </button>
+          <button class="btn btn-secondary btn-sm" ${pagination.page <= 1 ? 'disabled' : ''} onclick="changeAuditPage(${pagination.page - 1})">
+            <i class="fas fa-angle-left"></i>
+          </button>
+          <span style="font-size: 13px; padding: 0 12px;">
+            ${pagination.page} / ${pagination.totalPages}
+          </span>
+          <button class="btn btn-secondary btn-sm" ${pagination.page >= pagination.totalPages ? 'disabled' : ''} onclick="changeAuditPage(${pagination.page + 1})">
+            <i class="fas fa-angle-right"></i>
+          </button>
+          <button class="btn btn-secondary btn-sm" ${pagination.page >= pagination.totalPages ? 'disabled' : ''} onclick="changeAuditPage(${pagination.totalPages})">
+            <i class="fas fa-angle-double-right"></i>
+          </button>
+        </div>
+      `;
+    } catch (error) {
+      console.error('Audit logs error:', error);
+      resultsDiv.innerHTML = `
+        <div class="empty-state">
+          <i class="fas fa-exclamation-circle" style="color: var(--danger);"></i>
+          <h3>감사 로그 로드 실패</h3>
+          <p>${error.error || '알 수 없는 오류가 발생했습니다.'}</p>
+        </div>
+      `;
+    }
+  }
+
+  function formatAuditTimestamp(timestamp) {
+    if (!timestamp) return '-';
+    const date = new Date(timestamp);
+    return date.toLocaleString('ko-KR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  }
+
+  function getAuditActionBadgeClass(severity) {
+    const classes = {
+      'CRITICAL': 'badge-open',
+      'ERROR': 'badge-open',
+      'WARNING': 'badge-pending',
+      'INFO': 'badge-active',
+    };
+    return classes[severity] || 'badge-draft';
+  }
+
+  function formatAuditChange(log) {
+    if (log.field_name) {
+      const oldVal = log.old_value ? truncateText(log.old_value, 15) : '(없음)';
+      const newVal = log.new_value ? truncateText(log.new_value, 15) : '(없음)';
+      return `<code style="font-size: 10px;">${sanitizeHTML(log.field_name)}</code>: ${sanitizeHTML(oldVal)} → ${sanitizeHTML(newVal)}`;
+    }
+    if (log.reason_for_change) {
+      return `<span style="color: var(--text-muted);">${truncateText(log.reason_for_change, 30)}</span>`;
+    }
+    if (log.new_value) {
+      return `<span style="color: var(--text-muted);">${truncateText(log.new_value, 40)}</span>`;
+    }
+    return '-';
+  }
+
+  function truncateText(text, maxLen) {
+    if (!text) return '';
+    if (text.length <= maxLen) return text;
+    return text.substring(0, maxLen) + '...';
+  }
+
+  function applyAuditFilters() {
+    auditState.filters = {
+      studyId: document.getElementById('audit-filter-study')?.value || '',
+      action: document.getElementById('audit-filter-action')?.value || '',
+      startDate: document.getElementById('audit-filter-start')?.value || '',
+      endDate: document.getElementById('audit-filter-end')?.value || '',
+      search: document.getElementById('audit-filter-search')?.value || '',
+    };
+    auditState.currentPage = 1;
+    fetchAuditLogs();
+  }
+  window.applyAuditFilters = applyAuditFilters;
+
+  function changeAuditPage(page) {
+    auditState.currentPage = page;
+    fetchAuditLogs();
+  }
+  window.changeAuditPage = changeAuditPage;
+
+  function changeAuditPageSize(size) {
+    auditState.pageSize = parseInt(size);
+    auditState.currentPage = 1;
+    fetchAuditLogs();
+  }
+  window.changeAuditPageSize = changeAuditPageSize;
+
+  function sortAuditLogs(field) {
+    if (auditState.sortBy === field) {
+      auditState.sortOrder = auditState.sortOrder === 'desc' ? 'asc' : 'desc';
+    } else {
+      auditState.sortBy = field;
+      auditState.sortOrder = 'desc';
+    }
+    fetchAuditLogs();
+  }
+  window.sortAuditLogs = sortAuditLogs;
+
+  async function showAuditDetail(logId) {
+    try {
+      const result = await api.get(`/audit/logs/${logId}`);
+      const log = result.data;
+
+      const contextInfo = [];
+      if (log.context?.study) contextInfo.push(`<strong>Study:</strong> ${sanitizeHTML(log.context.study.protocol_number)}`);
+      if (log.context?.site) contextInfo.push(`<strong>Site:</strong> ${sanitizeHTML(log.context.site.site_number)} - ${sanitizeHTML(log.context.site.name)}`);
+      if (log.context?.subject) contextInfo.push(`<strong>Subject:</strong> ${sanitizeHTML(log.context.subject.subject_number)}`);
+
+      showModal('감사 로그 상세', `
+        <div style="display: grid; gap: 16px;">
+          <!-- 기본 정보 -->
+          <div style="background: var(--bg-secondary); padding: 16px; border-radius: 8px;">
+            <h4 style="margin-bottom: 12px; font-size: 13px; color: var(--text-muted);">기본 정보</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px;">
+              <div><span style="color: var(--text-muted);">Log ID:</span><br><code style="font-size: 11px;">${sanitizeHTML(log.id)}</code></div>
+              <div><span style="color: var(--text-muted);">타임스탬프:</span><br><strong>${formatAuditTimestamp(log.timestamp)}</strong></div>
+              <div><span style="color: var(--text-muted);">액션:</span><br><span class="badge ${getAuditActionBadgeClass(log.severity)}">${sanitizeHTML(log.action_label)}</span></div>
+              <div><span style="color: var(--text-muted);">카테고리:</span><br>${sanitizeHTML(log.category)}</div>
+            </div>
+          </div>
+
+          <!-- 사용자 정보 -->
+          <div style="background: var(--bg-secondary); padding: 16px; border-radius: 8px;">
+            <h4 style="margin-bottom: 12px; font-size: 13px; color: var(--text-muted);">사용자 정보 (WHO)</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px;">
+              <div><span style="color: var(--text-muted);">사용자:</span><br><strong>${sanitizeHTML(log.user_name)}</strong></div>
+              <div><span style="color: var(--text-muted);">역할:</span><br>${ui.getRoleShort(log.user_role)}</div>
+              <div><span style="color: var(--text-muted);">IP 주소:</span><br><code>${sanitizeHTML(log.ip_address || 'N/A')}</code></div>
+              <div><span style="color: var(--text-muted);">세션 ID:</span><br><code style="font-size: 10px;">${truncateText(log.session_id || 'N/A', 20)}</code></div>
+            </div>
+          </div>
+
+          <!-- 변경 내용 -->
+          <div style="background: var(--bg-secondary); padding: 16px; border-radius: 8px;">
+            <h4 style="margin-bottom: 12px; font-size: 13px; color: var(--text-muted);">변경 내용 (WHAT)</h4>
+            <div style="display: grid; gap: 8px; font-size: 13px;">
+              <div><span style="color: var(--text-muted);">테이블:</span> <strong>${sanitizeHTML(log.table_label)}</strong> (${sanitizeHTML(log.table_name)})</div>
+              <div><span style="color: var(--text-muted);">레코드 ID:</span> <code>${sanitizeHTML(log.record_id)}</code></div>
+              ${log.field_name ? `<div><span style="color: var(--text-muted);">필드:</span> <code>${sanitizeHTML(log.field_name)}</code></div>` : ''}
+              ${log.old_value ? `<div><span style="color: var(--text-muted);">이전 값:</span><br><pre style="background: #fff; padding: 8px; border-radius: 4px; margin: 4px 0; font-size: 11px; white-space: pre-wrap;">${sanitizeHTML(log.old_value)}</pre></div>` : ''}
+              ${log.new_value ? `<div><span style="color: var(--text-muted);">새 값:</span><br><pre style="background: #fff; padding: 8px; border-radius: 4px; margin: 4px 0; font-size: 11px; white-space: pre-wrap;">${sanitizeHTML(log.new_value)}</pre></div>` : ''}
+            </div>
+          </div>
+
+          ${log.reason_for_change ? `
+          <!-- 변경 사유 (21 CFR Part 11) -->
+          <div style="background: #fff3e0; padding: 16px; border-radius: 8px; border-left: 4px solid var(--warning);">
+            <h4 style="margin-bottom: 8px; font-size: 13px; color: var(--warning);">
+              <i class="fas fa-exclamation-triangle" style="margin-right: 6px;"></i>변경 사유 (WHY)
+            </h4>
+            <p style="margin: 0; font-size: 13px;">${sanitizeHTML(log.reason_for_change)}</p>
+          </div>
+          ` : ''}
+
+          ${contextInfo.length > 0 ? `
+          <!-- 연구 컨텍스트 -->
+          <div style="background: var(--bg-secondary); padding: 16px; border-radius: 8px;">
+            <h4 style="margin-bottom: 12px; font-size: 13px; color: var(--text-muted);">연구 컨텍스트</h4>
+            <div style="font-size: 13px;">${contextInfo.join('<br>')}</div>
+          </div>
+          ` : ''}
+
+          <!-- 클라이언트 정보 -->
+          ${log.user_agent ? `
+          <div style="font-size: 11px; color: var(--text-muted); padding-top: 8px; border-top: 1px solid var(--border-light);">
+            <strong>User Agent:</strong> ${sanitizeHTML(truncateText(log.user_agent, 80))}
+          </div>
+          ` : ''}
+        </div>
+      `, [{ label: '닫기', onclick: 'closeModal()' }]);
+    } catch (error) {
+      showToast('감사 로그 상세 조회 실패', 'error');
+    }
+  }
+  window.showAuditDetail = showAuditDetail;
+
+  async function showAuditStatistics() {
+    try {
+      const studyId = document.getElementById('audit-filter-study')?.value || state.studies[0]?.id;
+      if (!studyId) {
+        showToast('Study를 선택해주세요.', 'warning');
+        return;
+      }
+
+      showToast('통계를 불러오는 중...', 'info');
+      const result = await api.get(`/audit/statistics?studyId=${studyId}&period=30d`);
+      const stats = result.data;
+
+      showModal('Audit Trail 통계', `
+        <div style="display: grid; gap: 16px;">
+          <!-- 요약 -->
+          <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+            <div class="stat-card">
+              <div class="stat-label">총 이벤트</div>
+              <div class="stat-value">${(stats.summary?.totalEvents || 0).toLocaleString()}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">활성 사용자</div>
+              <div class="stat-value">${stats.summary?.uniqueUsers || 0}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">중요 이벤트</div>
+              <div class="stat-value" style="color: var(--danger);">${stats.summary?.criticalEvents || 0}</div>
+            </div>
+          </div>
+
+          <!-- 카테고리별 -->
+          <div style="background: var(--bg-secondary); padding: 16px; border-radius: 8px;">
+            <h4 style="margin-bottom: 12px; font-size: 13px;">카테고리별 분포</h4>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              ${(stats.categoryBreakdown || []).map(cat => `
+                <span class="badge badge-draft" style="font-size: 11px;">${cat.category}: ${cat.count}</span>
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- 활성 사용자 -->
+          <div style="background: var(--bg-secondary); padding: 16px; border-radius: 8px;">
+            <h4 style="margin-bottom: 12px; font-size: 13px;">활성 사용자 Top 5</h4>
+            <table class="data-table" style="font-size: 12px;">
+              <tbody>
+                ${(stats.activeUsers || []).slice(0, 5).map(u => `
+                  <tr>
+                    <td><strong>${sanitizeHTML(u.user_name)}</strong></td>
+                    <td>${ui.getRoleShort(u.user_role)}</td>
+                    <td style="text-align: right;">${u.activity_count}건</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 기간 정보 -->
+          <div style="font-size: 11px; color: var(--text-muted); text-align: center;">
+            조회 기간: ${stats.period?.from?.split('T')[0]} ~ ${stats.period?.to?.split('T')[0]}
+          </div>
+        </div>
+      `, [{ label: '닫기', onclick: 'closeModal()' }]);
+    } catch (error) {
+      showToast('통계 조회 실패', 'error');
+    }
+  }
+  window.showAuditStatistics = showAuditStatistics;
+
+  async function exportAuditTrail() {
+    const studyId = document.getElementById('audit-filter-study')?.value;
+    if (!studyId) {
+      showToast('Study를 선택해주세요.', 'warning');
+      return;
+    }
+
+    try {
+      showToast('Audit Trail 내보내기 중...', 'info');
+
+      const startDate = document.getElementById('audit-filter-start')?.value || '';
+      const endDate = document.getElementById('audit-filter-end')?.value || '';
+
+      const params = new URLSearchParams({ studyId });
+      if (startDate) params.set('startDate', startDate);
+      if (endDate) params.set('endDate', endDate);
+
+      const response = await fetch(`/api/audit/export?${params.toString()}`, {
+        headers: { 'Authorization': `Bearer ${state.token}` }
+      });
+
+      if (!response.ok) throw new Error('Export failed');
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `audit_trail_${studyId}_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      showToast('Audit Trail 내보내기 완료', 'success');
+    } catch (error) {
+      showToast('Audit Trail 내보내기 실패', 'error');
+    }
+  }
+  window.exportAuditTrail = exportAuditTrail;
 
   // =====================================================
   // USER MANAGEMENT

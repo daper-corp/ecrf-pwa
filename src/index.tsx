@@ -20,6 +20,7 @@ import cdiscRoutes from './routes/cdisc';
 import reportRoutes from './routes/reports';
 import twofaRoutes from './routes/twofa';
 import notificationRoutes from './routes/notifications';
+import auditRoutes from './routes/audit';
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -92,50 +93,8 @@ app.route('/api/2fa', twofaRoutes);
 // Push Notifications API
 app.route('/api/notifications', notificationRoutes);
 
-// Audit Log API
-app.get('/api/audit/logs', async (c) => {
-  const { getAuthUser } = await import('./middleware/auth');
-  const { hasPermission } = await import('./middleware/rbac');
-  
-  const user = getAuthUser(c);
-  if (!user) return c.json({ success: false, error: '인증이 필요합니다.' }, 401);
-  if (!hasPermission(user.role, 'VIEW_AUDIT')) {
-    return c.json({ success: false, error: '감사 로그 조회 권한이 없습니다.' }, 403);
-  }
-
-  const studyId = c.req.query('studyId');
-  const siteId = c.req.query('siteId');
-  const subjectId = c.req.query('subjectId');
-  const tableName = c.req.query('tableName');
-  const recordId = c.req.query('recordId');
-  const action = c.req.query('action');
-  const startDate = c.req.query('startDate');
-  const endDate = c.req.query('endDate');
-  const limit = parseInt(c.req.query('limit') || '100');
-  const offset = parseInt(c.req.query('offset') || '0');
-
-  let query = `SELECT * FROM audit_logs WHERE 1=1`;
-  const params: (string | number)[] = [];
-
-  if (studyId) { query += ` AND study_id = ?`; params.push(studyId); }
-  if (siteId) { query += ` AND site_id = ?`; params.push(siteId); }
-  if (subjectId) { query += ` AND subject_id = ?`; params.push(subjectId); }
-  if (tableName) { query += ` AND table_name = ?`; params.push(tableName); }
-  if (recordId) { query += ` AND record_id = ?`; params.push(recordId); }
-  if (action) { query += ` AND action = ?`; params.push(action); }
-  if (startDate) { query += ` AND timestamp >= ?`; params.push(startDate); }
-  if (endDate) { query += ` AND timestamp <= ?`; params.push(endDate); }
-
-  query += ` ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
-  params.push(limit, offset);
-
-  const logs = await c.env.DB.prepare(query).bind(...params).all();
-
-  return c.json({
-    success: true,
-    data: logs.results,
-  });
-});
+// Audit Trail API (21 CFR Part 11 Compliant)
+app.route('/api/audit', auditRoutes);
 
 // Health Check
 app.get('/api/health', (c) => {
