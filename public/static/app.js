@@ -534,15 +534,15 @@
         <label class="form-label">Phase</label>
         <select class="form-input" id="study-phase">
           <option value="">선택</option>
-          <option value="1">Phase 1</option>
-          <option value="2">Phase 2</option>
-          <option value="3">Phase 3</option>
-          <option value="4">Phase 4</option>
+          <option value="I">Phase I</option>
+          <option value="II">Phase II</option>
+          <option value="III">Phase III</option>
+          <option value="IV">Phase IV</option>
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Therapeutic Area</label>
-        <input type="text" class="form-input" id="study-therapeutic" placeholder="치료 영역">
+        <label class="form-label">Description</label>
+        <textarea class="form-input" id="study-description" rows="2" placeholder="임상시험 설명"></textarea>
       </div>
       <div class="form-group">
         <label class="form-label">시작일</label>
@@ -560,7 +560,7 @@
     const title = document.getElementById('study-title')?.value?.trim();
     const sponsor = document.getElementById('study-sponsor')?.value?.trim();
     const phase = document.getElementById('study-phase')?.value;
-    const therapeutic = document.getElementById('study-therapeutic')?.value?.trim();
+    const description = document.getElementById('study-description')?.value?.trim();
     const startDate = document.getElementById('study-start-date')?.value;
 
     if (!protocol || !title) {
@@ -573,10 +573,9 @@
         protocol_number: protocol,
         title,
         sponsor: sponsor || null,
-        phase: phase ? parseInt(phase) : null,
-        therapeutic_area: therapeutic || null,
-        study_start_date: startDate || null,
-        status: 'DRAFT'
+        phase: phase || null,
+        description: description || null,
+        study_start_date: startDate || null
       });
       
       if (result.success) {
