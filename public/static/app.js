@@ -3552,8 +3552,12 @@
       return;
     }
     
-    const content = document.getElementById('content');
-    if (!content) return;
+    const content = document.getElementById('main-content');
+    if (!content) {
+      console.error('main-content element not found');
+      showToast('화면을 로드할 수 없습니다.', 'error');
+      return;
+    }
     
     content.innerHTML = `
       <div class="px-4 py-6 pb-24">
