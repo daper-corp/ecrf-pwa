@@ -621,15 +621,15 @@
         <label class="form-label">Phase</label>
         <select class="form-input" id="edit-study-phase">
           <option value="">선택</option>
-          <option value="1" ${study.phase == 1 ? 'selected' : ''}>Phase 1</option>
-          <option value="2" ${study.phase == 2 ? 'selected' : ''}>Phase 2</option>
-          <option value="3" ${study.phase == 3 ? 'selected' : ''}>Phase 3</option>
-          <option value="4" ${study.phase == 4 ? 'selected' : ''}>Phase 4</option>
+          <option value="I" ${study.phase === 'I' ? 'selected' : ''}>Phase I</option>
+          <option value="II" ${study.phase === 'II' ? 'selected' : ''}>Phase II</option>
+          <option value="III" ${study.phase === 'III' ? 'selected' : ''}>Phase III</option>
+          <option value="IV" ${study.phase === 'IV' ? 'selected' : ''}>Phase IV</option>
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Therapeutic Area</label>
-        <input type="text" class="form-input" id="edit-study-therapeutic" value="${study.therapeutic_area || ''}">
+        <label class="form-label">Description</label>
+        <textarea class="form-input" id="edit-study-description" rows="3">${study.description || ''}</textarea>
       </div>
     `, [
       { label: '취소', onclick: 'closeModal()' },
@@ -643,7 +643,7 @@
     const sponsor = document.getElementById('edit-study-sponsor')?.value?.trim();
     const status = document.getElementById('edit-study-status')?.value;
     const phase = document.getElementById('edit-study-phase')?.value;
-    const therapeutic = document.getElementById('edit-study-therapeutic')?.value?.trim();
+    const description = document.getElementById('edit-study-description')?.value?.trim();
 
     if (!title) {
       showToast('Title은 필수입니다.', 'error');
@@ -654,9 +654,9 @@
       const result = await api.put(`/studies/${studyId}`, {
         title,
         sponsor: sponsor || null,
-        status,
-        phase: phase ? parseInt(phase) : null,
-        therapeutic_area: therapeutic || null
+        status: status || null,
+        phase: phase || null,
+        description: description || null
       });
       
       if (result.success) {

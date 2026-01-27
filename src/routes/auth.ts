@@ -209,6 +209,118 @@ auth.get('/users', requireAuth, requireRole('ADMIN'), async (c) => {
 });
 
 /**
+ * GET /api/auth/users/:userId
+ * 사용자 상세 조회 (관리자 전용)
+ */
+auth.get('/users/:userId', requireAuth, requireRole('ADMIN'), async (c) => {
+  try {
+    const userId = c.req.param('userId');
+
+    const user = await c.env.DB.prepare(`
+      SELECT 
+        id, email, name, role, status,
+        failed_login_attempts, locked_until, password_changed_at,
+        last_login_at, two_factor_enabled, created_at, updated_at
+      FROM users WHERE id = ?
+    `).bind(userId).first();
+
+    if (!user) {
+      return c.json({ success: false, error: '사용자를 찾을 수 없습니다.' }, 404);
+    }
+
+    // 사용자의 Site 할당 정보 조회
+    const siteAssignments = await c.env.DB.prepare(`
+      SELECT 
+        su.site_id, su.is_primary,
+        s.site_number, s.name as site_name,
+        st.id as study_id, st.protocol_number, st.short_title as study_title
+      FROM site_users su
+      JOIN sites s ON su.site_id = s.id
+      JOIN studies st ON s.study_id = st.id
+      WHERE su.user_id = ?
+    `).bind(userId).all();
+
+    return c.json({
+      success: true,
+      data: {
+        ...user,
+        siteAssignments: siteAssignments.results,
+      },
+    });
+  } catch (error) {
+    console.error('Get user error:', error);
+    return c.json({ success: false, error: '사용자 조회 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * PUT /api/auth/users/:userId
+ * 사용자 정보 수정 (관리자 전용)
+ */
+auth.put('/users/:userId', requireAuth, requireRole('ADMIN'), async (c) => {
+  try {
+    const userId = c.req.param('userId');
+    const body = await c.req.json();
+    const { name, email, role, status } = body;
+    const currentUser = getAuthUser(c);
+
+    const existingUser = await c.env.DB.prepare(`
+      SELECT id, name, email, role FROM users WHERE id = ?
+    `).bind(userId).first<any>();
+
+    if (!existingUser) {
+      return c.json({ success: false, error: '사용자를 찾을 수 없습니다.' }, 404);
+    }
+
+    // 이메일 중복 확인 (다른 사용자)
+    if (email && email !== existingUser.email) {
+      const emailExists = await c.env.DB.prepare(`
+        SELECT id FROM users WHERE email = ? AND id != ?
+      `).bind(email, userId).first();
+      
+      if (emailExists) {
+        return c.json({ success: false, error: '이미 사용 중인 이메일입니다.' }, 400);
+      }
+    }
+
+    await c.env.DB.prepare(`
+      UPDATE users SET
+        name = COALESCE(?, name),
+        email = COALESCE(?, email),
+        role = COALESCE(?, role),
+        status = COALESCE(?, status),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(name ?? null, email ?? null, role ?? null, status ?? null, userId).run();
+
+    // Audit Log
+    const { ipAddress, userAgent } = getClientInfo(c);
+    await createAuditLog(c.env.DB, {
+      user: currentUser!,
+      ipAddress: ipAddress ?? undefined,
+      userAgent: userAgent ?? undefined,
+      sessionId: c.get('sessionId') ?? undefined,
+    }, {
+      action: 'UPDATE',
+      tableName: 'users',
+      recordId: userId,
+      oldValue: JSON.stringify({ name: existingUser.name, email: existingUser.email, role: existingUser.role }),
+      newValue: JSON.stringify({ name, email, role, status }),
+    });
+
+    const updatedUser = await c.env.DB.prepare(`
+      SELECT id, email, name, role, status, created_at, updated_at
+      FROM users WHERE id = ?
+    `).bind(userId).first();
+
+    return c.json({ success: true, data: updatedUser });
+  } catch (error) {
+    console.error('Update user error:', error);
+    return c.json({ success: false, error: '사용자 수정 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
  * PUT /api/auth/users/:userId/status
  * 사용자 상태 변경 (관리자 전용)
  */
