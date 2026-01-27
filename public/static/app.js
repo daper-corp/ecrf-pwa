@@ -790,40 +790,150 @@
 
   function updateAuthUI() {
     const authSection = document.getElementById('auth-section');
+    const subNav = document.getElementById('sub-nav');
+    const headerStats = document.getElementById('header-stats');
     
     if (state.token && state.user) {
       ui.hide('#login-section');
       ui.show('#dashboard-section');
+      if (subNav) subNav.classList.remove('hidden');
+      
+      // Professional Role Gradient Colors
+      const roleGradients = {
+        'ADMIN': 'background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+        'PI': 'background: linear-gradient(135deg, #a855f7 0%, #9333ea 100%)',
+        'SUB_INV': 'background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+        'CRC': 'background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+        'CRA': 'background: linear-gradient(135deg, #10b981 0%, #059669 100%)',
+        'DM': 'background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
+      };
       
       authSection.innerHTML = `
-        <span class="text-sm text-gray-600 hidden md:inline">
-          <i class="fas fa-user-circle mr-1"></i>
-          ${state.user.name} (${ui.getRoleName(state.user.role)})
-        </span>
-        <button id="btn-settings" class="p-2 text-gray-600 hover:text-ecrf-blue hover:bg-gray-100 rounded-full transition" title="설정">
-          <i class="fas fa-cog text-lg"></i>
+        <!-- Notification Bell -->
+        <button id="btn-notifications" class="relative p-2.5 text-slate-400 hover:text-white rounded-xl transition hidden md:flex items-center justify-center" style="background: rgba(255,255,255,0.05);" title="알림">
+          <i class="fas fa-bell text-sm"></i>
+          <span id="notification-badge" class="hidden absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">0</span>
         </button>
-        <button id="btn-logout" class="text-sm text-gray-600 hover:text-red-600 transition">
-          <i class="fas fa-sign-out-alt mr-1"></i> 로그아웃
-        </button>
+        
+        <!-- User Profile Menu -->
+        <div class="relative" id="user-menu-container">
+          <button id="btn-user-menu" class="flex items-center gap-3 pl-2 pr-3 py-2 rounded-xl transition" style="background: rgba(255,255,255,0.05);" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+            <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-lg" style="${roleGradients[state.user.role] || 'background: #64748b'}">
+              ${ui.getInitials(state.user.name)}
+            </div>
+            <div class="hidden md:block text-left">
+              <p class="text-sm font-semibold text-white leading-tight">${state.user.name}</p>
+              <p class="text-[11px] text-slate-400 leading-tight">${ui.getRoleName(state.user.role)}</p>
+            </div>
+            <i class="fas fa-chevron-down text-slate-500 text-[10px] ml-1 hidden md:block"></i>
+          </button>
+          
+          <!-- Professional Dropdown Menu -->
+          <div id="user-dropdown" class="hidden absolute right-0 mt-3 w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50" style="animation: slideUp 0.2s ease;">
+            <!-- User Info Header -->
+            <div class="px-5 py-4 border-b border-gray-100" style="background: linear-gradient(180deg, #fafbfc 0%, #f8fafc 100%);">
+              <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-xl flex items-center justify-center text-white text-lg font-bold shadow-md" style="${roleGradients[state.user.role] || 'background: #64748b'}">
+                  ${ui.getInitials(state.user.name)}
+                </div>
+                <div>
+                  <p class="text-sm font-bold text-gray-900">${state.user.name}</p>
+                  <p class="text-xs text-gray-500">${state.user.email}</p>
+                  <span class="inline-flex items-center mt-1 px-2 py-0.5 rounded-md text-[10px] font-semibold" style="background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); color: #475569;">
+                    ${ui.getRoleName(state.user.role)}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Menu Items -->
+            <div class="py-2 px-2">
+              <button onclick="showSettings(); closeUserMenu();" class="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 rounded-xl transition">
+                <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);">
+                  <i class="fas fa-cog text-gray-500"></i>
+                </div>
+                <div class="text-left">
+                  <p class="font-medium">설정</p>
+                  <p class="text-[11px] text-gray-400">계정 및 환경설정</p>
+                </div>
+              </button>
+              <button onclick="show2FASettings(); closeUserMenu();" class="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 rounded-xl transition">
+                <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);">
+                  <i class="fas fa-shield-alt text-emerald-600"></i>
+                </div>
+                <div class="text-left">
+                  <p class="font-medium">2단계 인증</p>
+                  <p class="text-[11px] text-gray-400">보안 설정 관리</p>
+                </div>
+              </button>
+              ${state.user.role === 'ADMIN' ? `
+              <button onclick="showUserManagement(); closeUserMenu();" class="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 rounded-xl transition">
+                <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);">
+                  <i class="fas fa-users-cog text-blue-600"></i>
+                </div>
+                <div class="text-left">
+                  <p class="font-medium">사용자 관리</p>
+                  <p class="text-[11px] text-gray-400">계정 생성 및 권한 설정</p>
+                </div>
+              </button>
+              ` : ''}
+            </div>
+            
+            <!-- Logout -->
+            <div class="border-t border-gray-100 p-2">
+              <button onclick="logout(); closeUserMenu();" class="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-xl transition">
+                <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);">
+                  <i class="fas fa-sign-out-alt text-red-500"></i>
+                </div>
+                <span class="font-medium">로그아웃</span>
+              </button>
+            </div>
+          </div>
+        </div>
       `;
       
-      document.getElementById('btn-settings').addEventListener('click', () => showSettings());
-      document.getElementById('btn-logout').addEventListener('click', () => logout());
+      // Toggle user dropdown
+      document.getElementById('btn-user-menu')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const dropdown = document.getElementById('user-dropdown');
+        dropdown?.classList.toggle('hidden');
+      });
       
-      ui.setText('#user-name', state.user.name);
-      ui.setText('#user-role', ui.getRoleName(state.user.role));
-      ui.setText('#user-initials', ui.getInitials(state.user.name));
+      // Close dropdown on outside click
+      document.addEventListener('click', () => {
+        document.getElementById('user-dropdown')?.classList.add('hidden');
+      });
       
-      if (ui.canManage()) {
-        ui.show('#btn-new-study');
+      // Header stats (will be populated later)
+      if (headerStats) {
+        headerStats.innerHTML = `
+          <div class="quick-stat">
+            <span class="quick-stat-value" id="stat-active-subjects">-</span>
+            <span class="quick-stat-label">피험자</span>
+          </div>
+          <div class="quick-stat">
+            <span class="quick-stat-value" id="stat-open-queries">-</span>
+            <span class="quick-stat-label">미해결 Query</span>
+          </div>
+          <div class="quick-stat">
+            <span class="quick-stat-value" id="stat-pending-signs">-</span>
+            <span class="quick-stat-label">서명 대기</span>
+          </div>
+        `;
       }
+      
     } else {
       ui.show('#login-section');
       ui.hide('#dashboard-section');
+      if (subNav) subNav.classList.add('hidden');
       authSection.innerHTML = '';
     }
   }
+  
+  function closeUserMenu() {
+    document.getElementById('user-dropdown')?.classList.add('hidden');
+  }
+  window.closeUserMenu = closeUserMenu;
 
   // =====================================================
   // NAVIGATION
@@ -905,7 +1015,7 @@
   window.navigateTo = navigateTo;
 
   // =====================================================
-  // DASHBOARD
+  // PROFESSIONAL DASHBOARD
   // =====================================================
   async function loadDashboard() {
     state.currentStudy = null;
@@ -916,89 +1026,254 @@
     const mainContent = document.getElementById('main-content');
     if (!mainContent) return;
 
+    // Professional Role Gradients
+    const roleGradients = {
+      'ADMIN': 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+      'PI': 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
+      'SUB_INV': 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
+      'CRC': 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+      'CRA': 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+      'DM': 'linear-gradient(135deg, #d97706 0%, #b45309 100%)'
+    };
+
     mainContent.innerHTML = `
-      <!-- User Info -->
-      <div class="mb-6 bg-white rounded-lg shadow p-4">
-        <div class="flex items-center justify-between flex-wrap gap-4">
-          <div class="flex items-center">
-            <div class="w-12 h-12 bg-ecrf-blue rounded-full flex items-center justify-center text-white text-lg font-bold">
-              <span id="user-initials">${ui.getInitials(state.user?.name)}</span>
-            </div>
-            <div class="ml-4">
-              <h3 id="user-name" class="font-semibold text-gray-900">${state.user?.name || '사용자'}</h3>
-              <p id="user-role" class="text-sm text-gray-500">${ui.getRoleName(state.user?.role)}</p>
-            </div>
+      <div class="animate-fadeIn">
+        <!-- Professional Welcome Banner -->
+        <div class="relative overflow-hidden rounded-2xl mb-8 text-white" style="background: ${roleGradients[state.user?.role] || 'linear-gradient(135deg, #334155 0%, #1e293b 100%)'};">
+          <!-- Background Pattern -->
+          <div class="absolute inset-0 opacity-10">
+            <svg class="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <defs>
+                <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
+                  <path d="M 10 0 L 0 0 0 10" fill="none" stroke="white" stroke-width="0.5"/>
+                </pattern>
+              </defs>
+              <rect width="100" height="100" fill="url(#grid)"/>
+            </svg>
           </div>
-          <div class="text-sm text-gray-500">
-            <span><i class="fas fa-clock mr-1"></i> ${ui.formatDateTime(new Date().toISOString())}</span>
+          
+          <div class="relative p-6 sm:p-8">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div class="flex items-center">
+                <div class="w-16 h-16 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center text-2xl font-bold mr-5 shadow-lg">
+                  ${ui.getInitials(state.user?.name)}
+                </div>
+                <div>
+                  <p class="text-white/70 text-sm font-medium">환영합니다,</p>
+                  <h2 class="text-2xl font-bold">${state.user?.name || '사용자'}님</h2>
+                  <div class="flex items-center gap-2 mt-1">
+                    <span class="px-2.5 py-1 bg-white/20 backdrop-blur rounded-lg text-xs font-semibold">${ui.getRoleName(state.user?.role)}</span>
+                    ${state.user?.two_factor_enabled ? '<span class="px-2 py-1 bg-emerald-500/30 rounded-lg text-xs font-semibold flex items-center gap-1"><i class="fas fa-shield-alt text-[10px]"></i> 2FA</span>' : ''}
+                  </div>
+                </div>
+              </div>
+              <div class="text-left sm:text-right bg-white/10 backdrop-blur rounded-xl px-4 py-3">
+                <p class="text-white/70 text-xs font-medium uppercase tracking-wider">현재 시각</p>
+                <p class="text-xl font-bold">${new Date().toLocaleString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</p>
+                <p class="text-white/80 text-sm">${new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</p>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Quick Stats -->
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <div class="bg-white rounded-lg shadow p-6">
-          <div class="flex items-center">
-            <div class="p-3 bg-blue-100 rounded-full">
-              <i class="fas fa-flask text-ecrf-blue text-xl"></i>
+        <!-- Clinical Stats Grid -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <!-- Studies Card -->
+          <div class="stat-card group cursor-pointer" onclick="navigateTo('studies')" style="transition: all 0.2s ease;">
+            <div class="flex items-start justify-between">
+              <div>
+                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">임상시험</p>
+                <p id="stat-studies" class="stat-value mt-2">-</p>
+                <p class="text-xs text-gray-400 mt-1">등록된 스터디</p>
+              </div>
+              <div class="stat-icon" style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);">
+                <i class="fas fa-flask text-blue-600"></i>
+              </div>
             </div>
-            <div class="ml-4">
-              <p class="text-sm text-gray-500">임상시험</p>
-              <p id="stat-studies" class="text-2xl font-bold text-gray-900">-</p>
+            <div class="mt-4 pt-3 border-t border-gray-100 flex items-center text-xs text-blue-600 font-medium group-hover:text-blue-700">
+              <span>목록 보기</span>
+              <i class="fas fa-arrow-right ml-2 transform group-hover:translate-x-1 transition-transform"></i>
+            </div>
+          </div>
+          
+          <!-- Subjects Card -->
+          <div class="stat-card group cursor-pointer" onclick="navigateTo('subjects')" style="transition: all 0.2s ease;">
+            <div class="flex items-start justify-between">
+              <div>
+                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">피험자</p>
+                <p id="stat-subjects" class="stat-value mt-2">-</p>
+                <p id="stat-subjects-detail" class="text-xs text-gray-400 mt-1">전체 등록</p>
+              </div>
+              <div class="stat-icon" style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);">
+                <i class="fas fa-user-injured text-emerald-600"></i>
+              </div>
+            </div>
+            <div class="mt-4 pt-3 border-t border-gray-100">
+              <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div id="subjects-progress" class="h-full rounded-full transition-all duration-500" style="width: 0%; background: linear-gradient(90deg, #10b981 0%, #34d399 100%);"></div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Queries Card -->
+          <div class="stat-card group cursor-pointer" onclick="navigateTo('queries')" style="transition: all 0.2s ease;">
+            <div class="flex items-start justify-between">
+              <div>
+                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">미해결 Query</p>
+                <p id="stat-queries" class="stat-value mt-2">-</p>
+                <p id="stat-queries-detail" class="text-xs text-gray-400 mt-1">응답 대기</p>
+              </div>
+              <div class="stat-icon" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);">
+                <i class="fas fa-comment-medical text-amber-600"></i>
+              </div>
+            </div>
+            <div class="mt-4 pt-3 border-t border-gray-100 flex items-center text-xs text-amber-600 font-medium group-hover:text-amber-700">
+              <span>Query 관리</span>
+              <i class="fas fa-arrow-right ml-2 transform group-hover:translate-x-1 transition-transform"></i>
+            </div>
+          </div>
+          
+          <!-- Signatures Card -->
+          <div class="stat-card group cursor-pointer" style="transition: all 0.2s ease;">
+            <div class="flex items-start justify-between">
+              <div>
+                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">서명 대기</p>
+                <p id="stat-signatures" class="stat-value mt-2">-</p>
+                <p class="text-xs text-gray-400 mt-1">전자서명 필요</p>
+              </div>
+              <div class="stat-icon" style="background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);">
+                <i class="fas fa-file-signature text-purple-600"></i>
+              </div>
+            </div>
+            <div class="mt-4 pt-3 border-t border-gray-100 flex items-center text-xs text-purple-600 font-medium group-hover:text-purple-700">
+              <span>서명하기</span>
+              <i class="fas fa-arrow-right ml-2 transform group-hover:translate-x-1 transition-transform"></i>
             </div>
           </div>
         </div>
-        <div class="bg-white rounded-lg shadow p-6">
-          <div class="flex items-center">
-            <div class="p-3 bg-green-100 rounded-full">
-              <i class="fas fa-hospital text-ecrf-green text-xl"></i>
-            </div>
-            <div class="ml-4">
-              <p class="text-sm text-gray-500">연구기관</p>
-              <p id="stat-sites" class="text-2xl font-bold text-gray-900">-</p>
-            </div>
-          </div>
-        </div>
-        <div class="bg-white rounded-lg shadow p-6">
-          <div class="flex items-center">
-            <div class="p-3 bg-purple-100 rounded-full">
-              <i class="fas fa-users text-purple-600 text-xl"></i>
-            </div>
-            <div class="ml-4">
-              <p class="text-sm text-gray-500">피험자</p>
-              <p id="stat-subjects" class="text-2xl font-bold text-gray-900">-</p>
-            </div>
-          </div>
-        </div>
-        <div class="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-md transition" onclick="navigateTo('queries')">
-          <div class="flex items-center">
-            <div class="p-3 bg-yellow-100 rounded-full">
-              <i class="fas fa-question-circle text-ecrf-yellow text-xl"></i>
-            </div>
-            <div class="ml-4">
-              <p class="text-sm text-gray-500">미결 Query</p>
-              <p id="stat-queries" class="text-2xl font-bold text-gray-900">-</p>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      <!-- Studies List -->
-      <div class="bg-white rounded-lg shadow">
-        <div class="px-6 py-4 border-b flex items-center justify-between">
-          <h2 class="text-lg font-semibold text-gray-900">
-            <i class="fas fa-flask mr-2"></i> 임상시험 목록
-          </h2>
-          ${ui.canManage() ? `
-            <button id="btn-new-study" onclick="showNewStudyModal()" class="bg-ecrf-blue text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm">
-              <i class="fas fa-plus mr-1"></i> 새 임상시험
-            </button>
-          ` : ''}
-        </div>
-        <div id="studies-list" class="divide-y">
-          <div class="p-8 text-center text-gray-500">
-            <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-            <p>데이터를 불러오는 중...</p>
+        <!-- Main Content Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- Studies List Panel -->
+          <div class="lg:col-span-2">
+            <div class="card">
+              <div class="card-header flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);">
+                    <i class="fas fa-flask text-blue-600"></i>
+                  </div>
+                  <div>
+                    <h3 class="font-bold text-gray-800">임상시험 목록</h3>
+                    <p class="text-xs text-gray-400">Clinical Studies</p>
+                  </div>
+                </div>
+                ${ui.canManage() ? `
+                  <button onclick="showNewStudyModal()" class="btn btn-primary">
+                    <i class="fas fa-plus mr-2"></i>새 Study
+                  </button>
+                ` : ''}
+              </div>
+              <div id="studies-list" class="divide-y divide-gray-50">
+                <div class="p-12 text-center">
+                  <div class="w-12 h-12 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
+                  <p class="text-gray-400 text-sm">임상시험 데이터를 불러오는 중...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Side Panel -->
+          <div class="space-y-6">
+            <!-- Quick Actions -->
+            <div class="card">
+              <div class="card-header">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);">
+                    <i class="fas fa-bolt text-amber-600"></i>
+                  </div>
+                  <div>
+                    <h3 class="font-bold text-gray-800">빠른 작업</h3>
+                    <p class="text-xs text-gray-400">Quick Actions</p>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body space-y-2">
+                <button onclick="showSubjectSearch()" class="w-full flex items-center gap-3 px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition text-left">
+                  <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);">
+                    <i class="fas fa-search text-gray-500"></i>
+                  </div>
+                  <div>
+                    <p class="font-medium text-gray-700 text-sm">피험자 검색</p>
+                    <p class="text-[11px] text-gray-400">Subject Search</p>
+                  </div>
+                </button>
+                <button onclick="navigateTo('queries')" class="w-full flex items-center gap-3 px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition text-left">
+                  <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);">
+                    <i class="fas fa-comment-medical text-amber-600"></i>
+                  </div>
+                  <div>
+                    <p class="font-medium text-gray-700 text-sm">Query 관리</p>
+                    <p class="text-[11px] text-gray-400">Data Queries</p>
+                  </div>
+                </button>
+                <button onclick="navigateTo('reports')" class="w-full flex items-center gap-3 px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition text-left">
+                  <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);">
+                    <i class="fas fa-chart-pie text-blue-600"></i>
+                  </div>
+                  <div>
+                    <p class="font-medium text-gray-700 text-sm">리포트</p>
+                    <p class="text-[11px] text-gray-400">Reports & Analytics</p>
+                  </div>
+                </button>
+                <button onclick="navigateTo('exports')" class="w-full flex items-center gap-3 px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition text-left">
+                  <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);">
+                    <i class="fas fa-file-export text-emerald-600"></i>
+                  </div>
+                  <div>
+                    <p class="font-medium text-gray-700 text-sm">데이터 Export</p>
+                    <p class="text-[11px] text-gray-400">CDISC ODM/SDTM</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <!-- System Status -->
+            <div class="card">
+              <div class="card-header">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);">
+                    <i class="fas fa-heartbeat text-emerald-600"></i>
+                  </div>
+                  <div>
+                    <h3 class="font-bold text-gray-800">시스템 상태</h3>
+                    <p class="text-xs text-gray-400">System Health</p>
+                  </div>
+                </div>
+              </div>
+              <div class="card-body space-y-3">
+                <div class="flex items-center justify-between p-3 bg-emerald-50 rounded-xl">
+                  <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                    <span class="text-sm font-medium text-emerald-700">서버 연결</span>
+                  </div>
+                  <span class="text-xs font-semibold text-emerald-600">정상</span>
+                </div>
+                <div class="flex items-center justify-between p-3 bg-blue-50 rounded-xl">
+                  <div class="flex items-center gap-2">
+                    <i class="fas fa-shield-alt text-blue-500 text-sm"></i>
+                    <span class="text-sm font-medium text-blue-700">21 CFR Part 11</span>
+                  </div>
+                  <span class="text-xs font-semibold text-blue-600">준수</span>
+                </div>
+                <div class="flex items-center justify-between p-3 bg-purple-50 rounded-xl">
+                  <div class="flex items-center gap-2">
+                    <i class="fas fa-clock text-purple-500 text-sm"></i>
+                    <span class="text-sm font-medium text-purple-700">감사 로그</span>
+                  </div>
+                  <span class="text-xs font-semibold text-purple-600">활성</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1026,36 +1301,115 @@
     
     if (state.studies.length === 0) {
       container.innerHTML = `
-        <div class="p-8 text-center text-gray-500">
-          <i class="fas fa-folder-open text-4xl mb-4"></i>
-          <p>등록된 임상시험이 없습니다.</p>
+        <div class="p-12 text-center">
+          <div class="w-20 h-20 rounded-2xl mx-auto mb-6 flex items-center justify-center" style="background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);">
+            <i class="fas fa-flask text-3xl text-gray-400"></i>
+          </div>
+          <p class="text-gray-600 font-semibold mb-2">등록된 임상시험이 없습니다</p>
+          <p class="text-sm text-gray-400 mb-6">새로운 임상시험을 시작해보세요</p>
+          ${ui.canManage() ? `
+            <button onclick="showNewStudyModal()" class="btn btn-primary">
+              <i class="fas fa-plus mr-2"></i>새 Study 등록
+            </button>
+          ` : ''}
         </div>
       `;
       return;
     }
 
-    container.innerHTML = state.studies.map(study => `
-      <div class="p-4 hover:bg-gray-50 transition cursor-pointer" onclick="navigateTo('study', {studyId: '${study.id}'})">
-        <div class="flex items-center justify-between">
-          <div class="flex-1">
-            <div class="flex items-center flex-wrap gap-2">
-              <h3 class="font-semibold text-gray-900">${study.protocol_number}</h3>
-              ${ui.getStatusBadge(study.status)}
-              ${study.phase ? `<span class="text-xs text-gray-500">Phase ${study.phase}</span>` : ''}
+    const statusStyles = {
+      'ACTIVE': { bg: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)', text: '#047857', label: '진행중', icon: 'fa-play-circle' },
+      'DRAFT': { bg: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)', text: '#64748b', label: '초안', icon: 'fa-file-alt' },
+      'COMPLETED': { bg: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)', text: '#1d4ed8', label: '완료', icon: 'fa-check-circle' },
+      'SUSPENDED': { bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', text: '#b45309', label: '중단', icon: 'fa-pause-circle' },
+      'CLOSED': { bg: 'linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)', text: '#7c3aed', label: '종료', icon: 'fa-archive' }
+    };
+    
+    const phaseColors = {
+      '1': 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
+      '2': 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+      '3': 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
+      '4': 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)'
+    };
+
+    container.innerHTML = `
+      <div class="divide-y divide-gray-50">
+        ${state.studies.map(study => {
+          const statusStyle = statusStyles[study.status] || statusStyles['DRAFT'];
+          const phaseColor = study.phase ? phaseColors[study.phase.toString()] : null;
+          
+          return `
+            <div class="p-5 hover:bg-gray-50/50 transition cursor-pointer group" onclick="navigateTo('study', {studyId: '${study.id}'})">
+              <div class="flex items-start gap-4">
+                <!-- Study Protocol Badge -->
+                <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-lg font-bold shadow-lg flex-shrink-0" 
+                     style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);">
+                  ${study.protocol_number?.substring(0, 2).toUpperCase() || 'ST'}
+                </div>
+                
+                <!-- Study Information -->
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap mb-1.5">
+                    <h4 class="font-bold text-gray-900 group-hover:text-blue-600 transition">${study.protocol_number}</h4>
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold" 
+                          style="background: ${statusStyle.bg}; color: ${statusStyle.text};">
+                      <i class="fas ${statusStyle.icon} text-[9px]"></i>
+                      ${statusStyle.label}
+                    </span>
+                    ${study.phase ? `
+                      <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-semibold" 
+                            style="background: ${phaseColor || '#f1f5f9'}; color: #475569;">
+                        Phase ${study.phase}
+                      </span>
+                    ` : ''}
+                  </div>
+                  
+                  <p class="text-sm text-gray-600 line-clamp-1 mb-3">${study.title}</p>
+                  
+                  <div class="flex items-center flex-wrap gap-x-5 gap-y-2">
+                    <div class="flex items-center gap-2 text-xs text-gray-500">
+                      <div class="w-6 h-6 rounded-md flex items-center justify-center" style="background: #f1f5f9;">
+                        <i class="fas fa-building text-[10px] text-gray-400"></i>
+                      </div>
+                      <span>${study.sponsor || '-'}</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs text-gray-500">
+                      <div class="w-6 h-6 rounded-md flex items-center justify-center" style="background: #f1f5f9;">
+                        <i class="far fa-calendar text-[10px] text-gray-400"></i>
+                      </div>
+                      <span>${ui.formatDate(study.study_start_date)}</span>
+                    </div>
+                    ${study.therapeutic_area ? `
+                      <div class="flex items-center gap-2 text-xs text-gray-500">
+                        <div class="w-6 h-6 rounded-md flex items-center justify-center" style="background: #fce7f3;">
+                          <i class="fas fa-heartbeat text-[10px] text-pink-400"></i>
+                        </div>
+                        <span>${study.therapeutic_area}</span>
+                      </div>
+                    ` : ''}
+                    ${study.irb_number ? `
+                      <div class="flex items-center gap-2 text-xs text-gray-500">
+                        <div class="w-6 h-6 rounded-md flex items-center justify-center" style="background: #d1fae5;">
+                          <i class="fas fa-clipboard-check text-[10px] text-emerald-400"></i>
+                        </div>
+                        <span>IRB: ${study.irb_number}</span>
+                      </div>
+                    ` : ''}
+                  </div>
+                </div>
+                
+                <!-- Action Arrow -->
+                <div class="flex items-center self-center">
+                  <div class="w-10 h-10 rounded-xl flex items-center justify-center bg-gray-50 group-hover:bg-blue-50 transition">
+                    <i class="fas fa-chevron-right text-gray-300 group-hover:text-blue-500 transition"></i>
+                  </div>
+                </div>
+              </div>
             </div>
-            <p class="text-sm text-gray-600 mt-1 line-clamp-1">${study.title}</p>
-            <div class="flex items-center mt-2 text-xs text-gray-500 flex-wrap gap-x-4 gap-y-1">
-              <span><i class="fas fa-building mr-1"></i> ${study.sponsor || '-'}</span>
-              <span><i class="fas fa-calendar mr-1"></i> ${ui.formatDate(study.study_start_date)}</span>
-              ${study.irb_approval_number ? `<span><i class="fas fa-certificate mr-1"></i> IRB: ${study.irb_approval_number}</span>` : ''}
-            </div>
-          </div>
-          <div class="ml-4">
-            <i class="fas fa-chevron-right text-gray-400"></i>
-          </div>
-        </div>
+          `;
+        }).join('')}
       </div>
-    `).join('');
+    `;
   }
 
   async function loadDashboardStats() {
@@ -3560,52 +3914,125 @@
     }
     
     content.innerHTML = `
-      <div class="px-4 py-6 pb-24">
-        <!-- Header -->
-        <div class="flex items-center justify-between mb-6">
-          <div class="flex items-center">
-            <button onclick="navigateTo('dashboard')" class="mr-4 p-2 hover:bg-gray-100 rounded-full">
-              <i class="fas fa-arrow-left text-gray-600"></i>
+      <div class="animate-fadeIn">
+        <!-- Professional Page Header -->
+        <div class="mb-8">
+          <div class="flex items-center gap-4">
+            <button onclick="navigateTo('dashboard')" class="w-12 h-12 flex items-center justify-center rounded-xl bg-white border border-gray-200 shadow-sm hover:bg-gray-50 hover:border-gray-300 transition">
+              <i class="fas fa-arrow-left text-gray-500"></i>
             </button>
             <div>
-              <h1 class="text-xl font-bold text-gray-900">사용자 관리</h1>
-              <p class="text-sm text-gray-500">시스템 사용자 계정 관리</p>
+              <div class="flex items-center gap-3">
+                <h1 class="text-2xl font-bold text-gray-900">사용자 관리</h1>
+                <span class="badge badge-active text-[10px]">ADMIN</span>
+              </div>
+              <p class="text-sm text-gray-500 mt-1">User Account Management System</p>
             </div>
           </div>
-          <button onclick="showCreateUser()" class="btn-touch btn-touch-primary">
-            <i class="fas fa-user-plus mr-2"></i>
-            <span class="hidden sm:inline">사용자 등록</span>
-            <span class="sm:hidden">등록</span>
-          </button>
+        </div>
+
+        <!-- Statistics & Actions Bar -->
+        <div class="card mb-6">
+          <div class="p-5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div class="flex items-center gap-8">
+              <div class="flex items-center gap-4">
+                <div class="w-14 h-14 rounded-2xl flex items-center justify-center" style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);">
+                  <i class="fas fa-users text-xl text-blue-600"></i>
+                </div>
+                <div>
+                  <p class="text-3xl font-bold text-gray-900" id="user-count-total">-</p>
+                  <p class="text-xs text-gray-500 font-medium">전체 사용자</p>
+                </div>
+              </div>
+              
+              <div class="w-px h-12 bg-gray-200"></div>
+              
+              <div class="flex items-center gap-4">
+                <div class="w-14 h-14 rounded-2xl flex items-center justify-center" style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);">
+                  <i class="fas fa-user-check text-xl text-emerald-600"></i>
+                </div>
+                <div>
+                  <p class="text-3xl font-bold text-emerald-600" id="user-count-active">-</p>
+                  <p class="text-xs text-gray-500 font-medium">활성 계정</p>
+                </div>
+              </div>
+              
+              <div class="hidden sm:flex w-px h-12 bg-gray-200"></div>
+              
+              <div class="hidden sm:flex items-center gap-4">
+                <div class="w-14 h-14 rounded-2xl flex items-center justify-center" style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);">
+                  <i class="fas fa-user-lock text-xl text-red-600"></i>
+                </div>
+                <div>
+                  <p class="text-3xl font-bold text-red-600" id="user-count-locked">0</p>
+                  <p class="text-xs text-gray-500 font-medium">잠금 계정</p>
+                </div>
+              </div>
+            </div>
+            
+            <button onclick="showCreateUser()" class="btn btn-primary btn-lg">
+              <i class="fas fa-user-plus mr-2"></i>새 사용자 등록
+            </button>
+          </div>
         </div>
         
-        <!-- Filters -->
-        <div class="bg-white rounded-xl p-4 shadow-sm mb-4">
-          <div class="flex flex-wrap gap-2">
-            <select id="user-filter-role" onchange="loadUserList()" 
-                    class="px-3 py-2 border rounded-lg text-sm bg-white">
-              <option value="">전체 역할</option>
-              <option value="ADMIN">시스템 관리자</option>
-              <option value="PI">연구 책임자</option>
-              <option value="SUB_INV">공동 연구자</option>
-              <option value="CRC">CRC</option>
-              <option value="CRA">CRA</option>
-              <option value="DM">데이터 관리자</option>
-            </select>
-            <select id="user-filter-status" onchange="loadUserList()" 
-                    class="px-3 py-2 border rounded-lg text-sm bg-white">
-              <option value="">전체 상태</option>
-              <option value="active">활성</option>
-              <option value="inactive">비활성</option>
-              <option value="locked">잠금</option>
-            </select>
+        <!-- Filters Section -->
+        <div class="card mb-6">
+          <div class="p-4 flex flex-wrap items-center gap-4">
+            <div class="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
+              <i class="fas fa-filter text-gray-400 text-sm"></i>
+              <span class="text-sm font-semibold text-gray-600">필터</span>
+            </div>
+            
+            <div class="flex items-center gap-2">
+              <label class="text-xs font-medium text-gray-500">역할:</label>
+              <select id="user-filter-role" onchange="loadUserList()" 
+                      class="form-input py-2.5 w-auto min-w-[160px]">
+                <option value="">전체 역할</option>
+                <option value="ADMIN">🔴 시스템 관리자</option>
+                <option value="PI">🟣 연구 책임자 (PI)</option>
+                <option value="SUB_INV">🟤 공동 연구자</option>
+                <option value="CRC">🔵 CRC</option>
+                <option value="CRA">🟢 CRA (모니터)</option>
+                <option value="DM">🟡 데이터 관리자</option>
+              </select>
+            </div>
+            
+            <div class="flex items-center gap-2">
+              <label class="text-xs font-medium text-gray-500">상태:</label>
+              <select id="user-filter-status" onchange="loadUserList()" 
+                      class="form-input py-2.5 w-auto min-w-[130px]">
+                <option value="">전체 상태</option>
+                <option value="ACTIVE">✅ 활성</option>
+                <option value="INACTIVE">⏸️ 비활성</option>
+                <option value="LOCKED">🔒 잠금</option>
+              </select>
+            </div>
+            
+            <button onclick="loadUserList()" class="btn btn-secondary btn-sm ml-auto">
+              <i class="fas fa-sync-alt mr-2"></i>새로고침
+            </button>
           </div>
         </div>
         
         <!-- User List -->
-        <div id="user-list" class="space-y-3">
-          <div class="flex items-center justify-center py-12">
-            <i class="fas fa-spinner fa-spin text-blue-500 text-2xl"></i>
+        <div class="card">
+          <div class="card-header flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);">
+                <i class="fas fa-list text-purple-600"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-gray-800">사용자 목록</h3>
+                <p class="text-xs text-gray-400">Registered Users</p>
+              </div>
+            </div>
+          </div>
+          <div id="user-list">
+            <div class="p-12 text-center">
+              <div class="w-12 h-12 border-4 border-purple-100 border-t-purple-500 rounded-full animate-spin mx-auto mb-4"></div>
+              <p class="text-gray-400 text-sm">사용자 목록을 불러오는 중...</p>
+            </div>
           </div>
         </div>
       </div>
@@ -3622,6 +4049,16 @@
     const roleFilter = document.getElementById('user-filter-role')?.value || '';
     const statusFilter = document.getElementById('user-filter-status')?.value || '';
     
+    // Professional Role Gradient Styles
+    const roleGradients = {
+      'ADMIN': 'background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+      'PI': 'background: linear-gradient(135deg, #a855f7 0%, #9333ea 100%)',
+      'SUB_INV': 'background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+      'CRC': 'background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+      'CRA': 'background: linear-gradient(135deg, #10b981 0%, #059669 100%)',
+      'DM': 'background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
+    };
+    
     try {
       let url = '/auth/users?limit=100';
       if (roleFilter) url += `&role=${roleFilter}`;
@@ -3630,76 +4067,114 @@
       const result = await api.get(url);
       const users = result.data || [];
       
+      // Update statistics
+      const totalEl = document.getElementById('user-count-total');
+      const activeEl = document.getElementById('user-count-active');
+      const lockedEl = document.getElementById('user-count-locked');
+      if (totalEl) totalEl.textContent = users.length;
+      if (activeEl) activeEl.textContent = users.filter(u => (u.status || '').toUpperCase() === 'ACTIVE').length;
+      if (lockedEl) lockedEl.textContent = users.filter(u => (u.status || '').toUpperCase() === 'LOCKED').length;
+      
       if (users.length === 0) {
         listEl.innerHTML = `
-          <div class="text-center py-12 text-gray-500">
-            <i class="fas fa-users text-4xl mb-4 opacity-50"></i>
-            <p>등록된 사용자가 없습니다.</p>
+          <div class="text-center py-16">
+            <div class="w-20 h-20 rounded-2xl mx-auto mb-6 flex items-center justify-center" style="background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);">
+              <i class="fas fa-users text-3xl text-gray-400"></i>
+            </div>
+            <p class="text-gray-600 font-semibold mb-2">등록된 사용자가 없습니다</p>
+            <p class="text-sm text-gray-400 mb-6">새 사용자를 등록해주세요</p>
+            <button onclick="showCreateUser()" class="btn btn-primary">
+              <i class="fas fa-user-plus mr-2"></i>사용자 등록
+            </button>
           </div>
         `;
         return;
       }
       
-      listEl.innerHTML = users.map(user => {
-        const status = (user.status || '').toUpperCase();
-        const isActive = status === 'ACTIVE';
-        const isLocked = status === 'LOCKED';
-        return `
-        <div class="bg-white rounded-xl p-4 shadow-sm" data-user-id="${user.id}">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center flex-1 min-w-0">
-              <!-- Avatar -->
-              <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold mr-3 flex-shrink-0
-                          ${isActive ? 'bg-blue-500' : isLocked ? 'bg-red-500' : 'bg-gray-400'}">
-                ${ui.getInitials(user.name)}
-              </div>
-              
-              <!-- User Info -->
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center">
-                  <span class="font-medium text-gray-900 truncate">${user.name}</span>
-                  ${user.two_factor_enabled ? '<i class="fas fa-shield-alt text-green-500 ml-2 text-xs" title="2FA 활성화"></i>' : ''}
-                </div>
-                <div class="text-sm text-gray-500 truncate">${user.email}</div>
-                <div class="flex items-center mt-1 flex-wrap gap-1">
-                  <span class="px-2 py-0.5 rounded-full text-xs ${roleColors[user.role] || 'bg-gray-100 text-gray-700'}">
-                    ${roleNames[user.role] || user.role}
-                  </span>
-                  <span class="px-2 py-0.5 rounded-full text-xs ${
-                    isActive ? 'bg-green-100 text-green-700' : 
-                    isLocked ? 'bg-red-100 text-red-700' : 
-                    'bg-gray-100 text-gray-700'
-                  }">
-                    ${isActive ? '활성' : isLocked ? '잠금' : '비활성'}
-                  </span>
-                </div>
-              </div>
-            </div>
+      listEl.innerHTML = `
+        <div class="divide-y divide-gray-50">
+          ${users.map(user => {
+            const status = (user.status || '').toUpperCase();
+            const isActive = status === 'ACTIVE';
+            const isLocked = status === 'LOCKED';
             
-            <!-- Actions -->
-            <div class="flex items-center ml-2">
-              <button onclick="showUserDetail('${user.id}')" class="p-2 hover:bg-gray-100 rounded-full" title="상세보기">
-                <i class="fas fa-ellipsis-v text-gray-400"></i>
-              </button>
-            </div>
-          </div>
-          
-          <!-- Last Login -->
-          ${user.last_login_at ? `
-            <div class="mt-2 pt-2 border-t text-xs text-gray-400">
-              <i class="fas fa-clock mr-1"></i>
-              마지막 로그인: ${new Date(user.last_login_at).toLocaleString('ko-KR')}
-            </div>
-          ` : ''}
+            const statusStyles = {
+              ACTIVE: { bg: 'background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)', text: 'color: #047857', label: '활성', icon: 'fa-check-circle' },
+              LOCKED: { bg: 'background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)', text: 'color: #dc2626', label: '잠금', icon: 'fa-lock' },
+              INACTIVE: { bg: 'background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)', text: 'color: #64748b', label: '비활성', icon: 'fa-pause-circle' }
+            };
+            const statusStyle = statusStyles[status] || statusStyles.INACTIVE;
+            
+            return `
+              <div class="p-5 hover:bg-gray-50/50 transition cursor-pointer" data-user-id="${user.id}" onclick="showUserDetail('${user.id}')">
+                <div class="flex items-center gap-4">
+                  <!-- Professional Avatar -->
+                  <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-lg font-bold shadow-md flex-shrink-0" 
+                       style="${roleGradients[user.role] || 'background: #64748b'}">
+                    ${ui.getInitials(user.name)}
+                  </div>
+                  
+                  <!-- User Information -->
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                      <span class="font-bold text-gray-900 truncate">${user.name}</span>
+                      ${user.two_factor_enabled ? `
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold" style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); color: #047857;">
+                          <i class="fas fa-shield-alt"></i> 2FA
+                        </span>
+                      ` : ''}
+                    </div>
+                    <p class="text-sm text-gray-500 truncate mb-2">${user.email}</p>
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-semibold" 
+                            style="${roleGradients[user.role] || 'background: #64748b'}; color: white;">
+                        ${roleNames[user.role] || user.role}
+                      </span>
+                      <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold" 
+                            style="${statusStyle.bg}; ${statusStyle.text}">
+                        <i class="fas ${statusStyle.icon} text-[9px]"></i>
+                        ${statusStyle.label}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <!-- Last Login & Actions -->
+                  <div class="text-right hidden sm:block">
+                    ${user.last_login_at ? `
+                      <p class="text-xs text-gray-400 mb-1">마지막 로그인</p>
+                      <p class="text-sm font-medium text-gray-600">${new Date(user.last_login_at).toLocaleDateString('ko-KR')}</p>
+                      <p class="text-xs text-gray-400">${new Date(user.last_login_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</p>
+                    ` : `
+                      <p class="text-xs text-gray-400">마지막 로그인</p>
+                      <p class="text-sm text-gray-400">-</p>
+                    `}
+                  </div>
+                  
+                  <!-- Action Button -->
+                  <button onclick="event.stopPropagation(); showUserDetail('${user.id}')" 
+                          class="w-10 h-10 rounded-xl flex items-center justify-center hover:bg-gray-100 transition" 
+                          title="상세보기">
+                    <i class="fas fa-chevron-right text-gray-300"></i>
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('')}
         </div>
-      `;}).join('');
+      `;
       
     } catch (error) {
+      console.error('Load user list error:', error);
       listEl.innerHTML = `
-        <div class="text-center py-12 text-red-500">
-          <i class="fas fa-exclamation-circle text-4xl mb-4"></i>
-          <p>사용자 목록을 불러오는데 실패했습니다.</p>
-          <button onclick="loadUserList()" class="mt-4 text-blue-600">다시 시도</button>
+        <div class="text-center py-16">
+          <div class="w-20 h-20 rounded-2xl mx-auto mb-6 flex items-center justify-center" style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);">
+            <i class="fas fa-exclamation-triangle text-3xl text-red-500"></i>
+          </div>
+          <p class="text-gray-600 font-semibold mb-2">사용자 목록을 불러오는데 실패했습니다</p>
+          <p class="text-sm text-gray-400 mb-6">${error.message || '네트워크 오류가 발생했습니다'}</p>
+          <button onclick="loadUserList()" class="btn btn-primary">
+            <i class="fas fa-sync-alt mr-2"></i>다시 시도
+          </button>
         </div>
       `;
     }
