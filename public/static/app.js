@@ -496,7 +496,12 @@
   }
 
   async function loadDashboardStats() {
-    document.getElementById('stat-studies').textContent = state.studies.length.toString();
+    const statStudies = document.getElementById('stat-studies');
+    const statSubjects = document.getElementById('stat-subjects');
+    const statQueries = document.getElementById('stat-queries');
+    const statSignatures = document.getElementById('stat-signatures');
+
+    if (statStudies) statStudies.textContent = state.studies.length.toString();
     
     let totalSubjects = 0, totalQueries = 0, totalSignatures = 0;
 
@@ -511,9 +516,9 @@
       } catch (e) {}
     }
 
-    document.getElementById('stat-subjects').textContent = totalSubjects.toString();
-    document.getElementById('stat-queries').textContent = totalQueries.toString();
-    document.getElementById('stat-signatures').textContent = totalSignatures.toString();
+    if (statSubjects) statSubjects.textContent = totalSubjects.toString();
+    if (statQueries) statQueries.textContent = totalQueries.toString();
+    if (statSignatures) statSignatures.textContent = totalSignatures.toString();
   }
 
   // =====================================================
@@ -2370,7 +2375,7 @@
                         ` : `<div style="font-size: 12px; color: var(--text-muted);">아직 데이터가 입력되지 않았습니다.</div>`}
                       </div>
                       <div style="display: flex; gap: 8px;">
-                        ${ui.canWrite() && visit.status !== 'COMPLETE' ? `
+                        ${ui.canWrite() && !['COMPLETED', 'MISSED', 'NOT_DONE'].includes(visit.status) ? `
                           ${instance 
                             ? `<button class="btn btn-secondary btn-sm" onclick="openCRFEntry('${visitId}', '${form.form_code}', '${instance.id}')"><i class="fas fa-edit"></i> 수정</button>`
                             : `<button class="btn btn-primary btn-sm" onclick="openCRFEntry('${visitId}', '${form.form_code}', null)"><i class="fas fa-plus"></i> 입력</button>`
@@ -2405,7 +2410,7 @@
 
   async function completeVisit(visitId) {
     try {
-      await api.put(`/visits/${visitId}`, { status: 'COMPLETE' });
+      await api.put(`/visits/${visitId}`, { status: 'COMPLETED' });
       showToast('방문이 완료되었습니다.', 'success');
       loadVisitDetail(visitId);
     } catch (error) {
