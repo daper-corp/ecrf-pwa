@@ -164,6 +164,7 @@ studies.post('/', requireAuth, requirePermission('MANAGE_STUDY'), async (c) => {
       version = '1.0',
       phase,
       sponsor,
+      therapeutic_area,
       irb_approval_number,
       irb_approval_date,
       study_start_date,
@@ -189,12 +190,12 @@ studies.post('/', requireAuth, requirePermission('MANAGE_STUDY'), async (c) => {
     await c.env.DB.prepare(`
       INSERT INTO studies (
         id, protocol_number, title, short_title, version, phase, status,
-        sponsor, irb_approval_number, irb_approval_date, study_start_date,
+        sponsor, therapeutic_area, irb_approval_number, irb_approval_date, study_start_date,
         description, created_by, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       studyId, protocol_number, title, short_title ?? null, version, phase ?? null,
-      sponsor ?? null, irb_approval_number ?? null, irb_approval_date ?? null,
+      sponsor ?? null, therapeutic_area ?? null, irb_approval_number ?? null, irb_approval_date ?? null,
       study_start_date ?? null, description ?? null, user.userId, timestamp, timestamp
     ).run();
 
@@ -261,6 +262,7 @@ studies.put('/:id', requireAuth, requirePermission('MANAGE_STUDY'), async (c) =>
       phase,
       status,
       sponsor,
+      therapeutic_area,
       irb_approval_number,
       irb_approval_date,
       irb_expiry_date,
@@ -280,6 +282,7 @@ studies.put('/:id', requireAuth, requirePermission('MANAGE_STUDY'), async (c) =>
         phase = COALESCE(?, phase),
         status = COALESCE(?, status),
         sponsor = COALESCE(?, sponsor),
+        therapeutic_area = COALESCE(?, therapeutic_area),
         irb_approval_number = COALESCE(?, irb_approval_number),
         irb_approval_date = COALESCE(?, irb_approval_date),
         irb_expiry_date = COALESCE(?, irb_expiry_date),
@@ -290,7 +293,7 @@ studies.put('/:id', requireAuth, requirePermission('MANAGE_STUDY'), async (c) =>
       WHERE id = ?
     `).bind(
       title ?? null, short_title ?? null, version ?? null, phase ?? null,
-      status ?? null, sponsor ?? null, irb_approval_number ?? null,
+      status ?? null, sponsor ?? null, therapeutic_area ?? null, irb_approval_number ?? null,
       irb_approval_date ?? null, irb_expiry_date ?? null,
       study_start_date ?? null, study_end_date ?? null, description ?? null,
       timestamp, studyId
@@ -307,7 +310,7 @@ studies.put('/:id', requireAuth, requirePermission('MANAGE_STUDY'), async (c) =>
     };
 
     const fieldsToCheck = [
-      'title', 'short_title', 'version', 'phase', 'status', 'sponsor',
+      'title', 'short_title', 'version', 'phase', 'status', 'sponsor', 'therapeutic_area',
       'irb_approval_number', 'irb_approval_date', 'irb_expiry_date',
       'study_start_date', 'study_end_date', 'description'
     ];

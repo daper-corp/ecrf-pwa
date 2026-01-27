@@ -527,26 +527,46 @@
         <input type="text" class="form-input" id="study-title" placeholder="임상시험 제목">
       </div>
       <div class="form-group">
+        <label class="form-label">Short Title</label>
+        <input type="text" class="form-input" id="study-short-title" placeholder="간략 제목">
+      </div>
+      <div class="form-group">
         <label class="form-label">Sponsor</label>
         <input type="text" class="form-input" id="study-sponsor" placeholder="스폰서 기관명">
       </div>
-      <div class="form-group">
-        <label class="form-label">Phase</label>
-        <select class="form-input" id="study-phase">
-          <option value="">선택</option>
-          <option value="I">Phase I</option>
-          <option value="II">Phase II</option>
-          <option value="III">Phase III</option>
-          <option value="IV">Phase IV</option>
-        </select>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="form-group">
+          <label class="form-label">Phase</label>
+          <select class="form-input" id="study-phase">
+            <option value="">선택</option>
+            <option value="I">Phase I</option>
+            <option value="II">Phase II</option>
+            <option value="III">Phase III</option>
+            <option value="IV">Phase IV</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">치료 영역</label>
+          <input type="text" class="form-input" id="study-therapeutic" placeholder="예: 종양학, 심혈관">
+        </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Description</label>
-        <textarea class="form-input" id="study-description" rows="2" placeholder="임상시험 설명"></textarea>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="form-group">
+          <label class="form-label">IRB 승인번호</label>
+          <input type="text" class="form-input" id="study-irb-number" placeholder="예: IRB-2025-001">
+        </div>
+        <div class="form-group">
+          <label class="form-label">IRB 승인일</label>
+          <input type="date" class="form-input" id="study-irb-date">
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">시작일</label>
         <input type="date" class="form-input" id="study-start-date">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea class="form-input" id="study-description" rows="2" placeholder="임상시험 설명"></textarea>
       </div>
     `, [
       { label: '취소', onclick: 'closeModal()' },
@@ -558,10 +578,14 @@
   async function createStudy() {
     const protocol = document.getElementById('study-protocol')?.value?.trim();
     const title = document.getElementById('study-title')?.value?.trim();
+    const shortTitle = document.getElementById('study-short-title')?.value?.trim();
     const sponsor = document.getElementById('study-sponsor')?.value?.trim();
     const phase = document.getElementById('study-phase')?.value;
-    const description = document.getElementById('study-description')?.value?.trim();
+    const therapeutic = document.getElementById('study-therapeutic')?.value?.trim();
+    const irbNumber = document.getElementById('study-irb-number')?.value?.trim();
+    const irbDate = document.getElementById('study-irb-date')?.value;
     const startDate = document.getElementById('study-start-date')?.value;
+    const description = document.getElementById('study-description')?.value?.trim();
 
     if (!protocol || !title) {
       showToast('Protocol Number와 Title은 필수입니다.', 'error');
@@ -572,10 +596,14 @@
       const result = await api.post('/studies', {
         protocol_number: protocol,
         title,
+        short_title: shortTitle || null,
         sponsor: sponsor || null,
         phase: phase || null,
-        description: description || null,
-        study_start_date: startDate || null
+        therapeutic_area: therapeutic || null,
+        irb_approval_number: irbNumber || null,
+        irb_approval_date: irbDate || null,
+        study_start_date: startDate || null,
+        description: description || null
       });
       
       if (result.success) {
@@ -596,39 +624,69 @@
     showModal('Study 수정', `
       <div class="form-group">
         <label class="form-label">Protocol Number</label>
-        <input type="text" class="form-input" id="edit-study-protocol" value="${study.protocol_number || ''}" readonly style="background: var(--bg-tertiary);">
+        <input type="text" class="form-input" value="${study.protocol_number || ''}" readonly style="background: var(--bg-tertiary);">
       </div>
       <div class="form-group">
         <label class="form-label">Study Title <span class="required">*</span></label>
         <input type="text" class="form-input" id="edit-study-title" value="${study.title || ''}">
       </div>
       <div class="form-group">
+        <label class="form-label">Short Title</label>
+        <input type="text" class="form-input" id="edit-study-short-title" value="${study.short_title || ''}">
+      </div>
+      <div class="form-group">
         <label class="form-label">Sponsor</label>
         <input type="text" class="form-input" id="edit-study-sponsor" value="${study.sponsor || ''}">
       </div>
-      <div class="form-group">
-        <label class="form-label">상태</label>
-        <select class="form-input" id="edit-study-status">
-          <option value="DRAFT" ${study.status === 'DRAFT' ? 'selected' : ''}>초안</option>
-          <option value="ACTIVE" ${study.status === 'ACTIVE' ? 'selected' : ''}>진행중</option>
-          <option value="SUSPENDED" ${study.status === 'SUSPENDED' ? 'selected' : ''}>중단</option>
-          <option value="COMPLETED" ${study.status === 'COMPLETED' ? 'selected' : ''}>완료</option>
-          <option value="CLOSED" ${study.status === 'CLOSED' ? 'selected' : ''}>종료</option>
-        </select>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="form-group">
+          <label class="form-label">상태</label>
+          <select class="form-input" id="edit-study-status">
+            <option value="DRAFT" ${study.status === 'DRAFT' ? 'selected' : ''}>초안</option>
+            <option value="ACTIVE" ${study.status === 'ACTIVE' ? 'selected' : ''}>진행중</option>
+            <option value="SUSPENDED" ${study.status === 'SUSPENDED' ? 'selected' : ''}>중단</option>
+            <option value="COMPLETED" ${study.status === 'COMPLETED' ? 'selected' : ''}>완료</option>
+            <option value="CLOSED" ${study.status === 'CLOSED' ? 'selected' : ''}>종료</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phase</label>
+          <select class="form-input" id="edit-study-phase">
+            <option value="">선택</option>
+            <option value="I" ${study.phase === 'I' ? 'selected' : ''}>Phase I</option>
+            <option value="II" ${study.phase === 'II' ? 'selected' : ''}>Phase II</option>
+            <option value="III" ${study.phase === 'III' ? 'selected' : ''}>Phase III</option>
+            <option value="IV" ${study.phase === 'IV' ? 'selected' : ''}>Phase IV</option>
+          </select>
+        </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Phase</label>
-        <select class="form-input" id="edit-study-phase">
-          <option value="">선택</option>
-          <option value="I" ${study.phase === 'I' ? 'selected' : ''}>Phase I</option>
-          <option value="II" ${study.phase === 'II' ? 'selected' : ''}>Phase II</option>
-          <option value="III" ${study.phase === 'III' ? 'selected' : ''}>Phase III</option>
-          <option value="IV" ${study.phase === 'IV' ? 'selected' : ''}>Phase IV</option>
-        </select>
+        <label class="form-label">치료 영역</label>
+        <input type="text" class="form-input" id="edit-study-therapeutic" value="${study.therapeutic_area || ''}" placeholder="예: 종양학, 심혈관">
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="form-group">
+          <label class="form-label">IRB 승인번호</label>
+          <input type="text" class="form-input" id="edit-study-irb-number" value="${study.irb_approval_number || ''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">IRB 승인일</label>
+          <input type="date" class="form-input" id="edit-study-irb-date" value="${study.irb_approval_date?.split('T')[0] || ''}">
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="form-group">
+          <label class="form-label">시작일</label>
+          <input type="date" class="form-input" id="edit-study-start-date" value="${study.study_start_date?.split('T')[0] || ''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">종료일</label>
+          <input type="date" class="form-input" id="edit-study-end-date" value="${study.study_end_date?.split('T')[0] || ''}">
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">Description</label>
-        <textarea class="form-input" id="edit-study-description" rows="3">${study.description || ''}</textarea>
+        <textarea class="form-input" id="edit-study-description" rows="2">${study.description || ''}</textarea>
       </div>
     `, [
       { label: '취소', onclick: 'closeModal()' },
@@ -639,9 +697,15 @@
 
   async function updateStudy(studyId) {
     const title = document.getElementById('edit-study-title')?.value?.trim();
+    const shortTitle = document.getElementById('edit-study-short-title')?.value?.trim();
     const sponsor = document.getElementById('edit-study-sponsor')?.value?.trim();
     const status = document.getElementById('edit-study-status')?.value;
     const phase = document.getElementById('edit-study-phase')?.value;
+    const therapeutic = document.getElementById('edit-study-therapeutic')?.value?.trim();
+    const irbNumber = document.getElementById('edit-study-irb-number')?.value?.trim();
+    const irbDate = document.getElementById('edit-study-irb-date')?.value;
+    const startDate = document.getElementById('edit-study-start-date')?.value;
+    const endDate = document.getElementById('edit-study-end-date')?.value;
     const description = document.getElementById('edit-study-description')?.value?.trim();
 
     if (!title) {
@@ -652,9 +716,15 @@
     try {
       const result = await api.put(`/studies/${studyId}`, {
         title,
+        short_title: shortTitle || null,
         sponsor: sponsor || null,
         status: status || null,
         phase: phase || null,
+        therapeutic_area: therapeutic || null,
+        irb_approval_number: irbNumber || null,
+        irb_approval_date: irbDate || null,
+        study_start_date: startDate || null,
+        study_end_date: endDate || null,
         description: description || null
       });
       
