@@ -12,27 +12,27 @@ export const PERMISSIONS = {
   // 데이터 조회
   READ_DATA: ['ADMIN', 'PI', 'SUB_INV', 'CRC', 'CRA', 'DM'],
   
-  // 데이터 입력/수정
-  WRITE_DATA: ['PI', 'SUB_INV', 'CRC', 'DM'],
+  // 데이터 입력/수정 (ADMIN 추가)
+  WRITE_DATA: ['ADMIN', 'PI', 'SUB_INV', 'CRC', 'DM'],
   
   // 최종 서명
-  SIGN_CRF: ['PI'],
+  SIGN_CRF: ['ADMIN', 'PI'],
   
   // Query 발행
-  CREATE_QUERY: ['PI', 'SUB_INV', 'CRC', 'CRA', 'DM'],
+  CREATE_QUERY: ['ADMIN', 'PI', 'SUB_INV', 'CRC', 'CRA', 'DM'],
   
   // Query 답변
-  ANSWER_QUERY: ['PI', 'SUB_INV', 'CRC', 'DM'],
+  ANSWER_QUERY: ['ADMIN', 'PI', 'SUB_INV', 'CRC', 'DM'],
   
   // Query 종료
-  CLOSE_QUERY: ['CRA', 'DM'],
+  CLOSE_QUERY: ['ADMIN', 'CRA', 'DM'],
   
   // Data Export
-  EXPORT_DATA: ['PI', 'DM'],
+  EXPORT_DATA: ['ADMIN', 'PI', 'DM'],
   
   // Data Lock/Unlock
-  LOCK_DATA: ['DM'],
-  UNLOCK_DATA: ['DM'],
+  LOCK_DATA: ['ADMIN', 'DM'],
+  UNLOCK_DATA: ['ADMIN', 'DM'],
   
   // Study 관리
   MANAGE_STUDY: ['ADMIN', 'DM'],

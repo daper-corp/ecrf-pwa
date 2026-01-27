@@ -150,6 +150,96 @@ visits.get('/:id', requireAuth, async (c) => {
 });
 
 /**
+ * POST /api/subjects/:subjectId/visits
+ * 새 Visit 생성
+ */
+visits.post('/', requireAuth, requirePermission('WRITE_DATA'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const subjectId = c.req.param('subjectId');
+    const body = await c.req.json();
+    const { visit_schedule_id, visit_name, visit_number, scheduled_date, actual_date, notes } = body;
+
+    if (!visit_name || visit_number === undefined) {
+      return c.json({ success: false, error: 'visit_name과 visit_number는 필수입니다.' }, 400);
+    }
+
+    // Subject 확인
+    const subject = await c.env.DB.prepare(`
+      SELECT s.*, si.study_id FROM subjects s
+      JOIN sites si ON s.site_id = si.id
+      WHERE s.id = ?
+    `).bind(subjectId).first<any>();
+
+    if (!subject) {
+      return c.json({ success: false, error: 'Subject를 찾을 수 없습니다.' }, 404);
+    }
+
+    // 접근 권한 확인
+    const hasAccess = await checkSubjectAccess(c.env.DB, user.userId, user.role, subjectId);
+    if (!hasAccess) {
+      return c.json({ success: false, error: '해당 Subject에 접근 권한이 없습니다.' }, 403);
+    }
+
+    const visitId = generateId('visit');
+    const timestamp = now();
+
+    await c.env.DB.prepare(`
+      INSERT INTO visits (
+        id, subject_id, visit_schedule_id, visit_name, visit_number, 
+        scheduled_date, actual_date, status, notes, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'SCHEDULED', ?, ?, ?)
+    `).bind(
+      visitId, subjectId, visit_schedule_id ?? null, visit_name, visit_number,
+      scheduled_date ?? null, actual_date ?? null, notes ?? null, timestamp, timestamp
+    ).run();
+
+    // Visit에 해당하는 CRF 인스턴스 생성 (visit_schedule이 있는 경우)
+    if (visit_schedule_id) {
+      const formDefs = await c.env.DB.prepare(`
+        SELECT * FROM form_definitions 
+        WHERE visit_schedule_id = ? OR (study_id = ? AND visit_schedule_id IS NULL)
+        ORDER BY form_order
+      `).bind(visit_schedule_id, subject.study_id).all();
+
+      for (const form of formDefs.results as any[]) {
+        const crfId = generateId('crf');
+        await c.env.DB.prepare(`
+          INSERT INTO crf_instances (
+            id, visit_id, form_definition_id, form_name, form_code, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, 'NOT_STARTED', ?, ?)
+        `).bind(crfId, visitId, form.id, form.form_name, form.form_code, timestamp, timestamp).run();
+      }
+    }
+
+    // Audit Log
+    const { ipAddress, userAgent } = getClientInfo(c);
+    await createAuditLog(c.env.DB, {
+      user,
+      ipAddress: ipAddress ?? undefined,
+      userAgent: userAgent ?? undefined,
+      sessionId: c.get('sessionId') ?? undefined,
+      studyId: subject.study_id,
+      siteId: subject.site_id,
+      subjectId,
+    }, {
+      action: 'CREATE',
+      tableName: 'visits',
+      recordId: visitId,
+    });
+
+    const newVisit = await c.env.DB.prepare(`SELECT * FROM visits WHERE id = ?`).bind(visitId).first();
+
+    return c.json({ success: true, data: newVisit }, 201);
+  } catch (error) {
+    console.error('Create visit error:', error);
+    return c.json({ success: false, error: 'Visit 생성 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
  * PUT /api/visits/:id
  * Visit 수정 (날짜, 상태 등)
  */
