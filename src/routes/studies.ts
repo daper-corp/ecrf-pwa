@@ -114,9 +114,13 @@ studies.get('/:id', requireAuth, async (c) => {
       SELECT * FROM visit_schedules WHERE study_id = ? ORDER BY visit_number
     `).bind(studyId).all();
 
-    // Form Definitions 조회
+    // Form Definitions 조회 (필드 수 포함)
     const formDefinitions = await c.env.DB.prepare(`
-      SELECT * FROM form_definitions WHERE study_id = ? ORDER BY form_order
+      SELECT fd.*, 
+        (SELECT COUNT(*) FROM field_definitions WHERE form_definition_id = fd.id) as field_count
+      FROM form_definitions fd 
+      WHERE fd.study_id = ? 
+      ORDER BY fd.form_order
     `).bind(studyId).all();
 
     // Sites 수 조회
@@ -932,6 +936,206 @@ studies.delete('/:id/form-definitions/:formId', requireAuth, requirePermission('
   } catch (error) {
     console.error('Delete form definition error:', error);
     return c.json({ success: false, error: 'Form Definition 삭제 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+// =========================================================
+// Field Definition (CRF 필드) API
+// =========================================================
+
+/**
+ * GET /api/studies/:id/form-definitions/:formId/fields
+ * Field Definition 목록 조회
+ */
+studies.get('/:id/form-definitions/:formId/fields', requireAuth, async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const formId = c.req.param('formId');
+
+    const fields = await c.env.DB.prepare(`
+      SELECT * FROM field_definitions WHERE form_definition_id = ? ORDER BY field_order
+    `).bind(formId).all();
+
+    return c.json({
+      success: true,
+      data: fields.results,
+    });
+  } catch (error) {
+    console.error('Get field definitions error:', error);
+    return c.json({ success: false, error: 'Field Definition 조회 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * POST /api/studies/:id/form-definitions/:formId/fields
+ * Field Definition 생성
+ */
+studies.post('/:id/form-definitions/:formId/fields', requireAuth, requirePermission('MANAGE_STUDY'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+    const formId = c.req.param('formId');
+    const body = await c.req.json();
+    const { 
+      field_code, field_name, field_type, field_order, 
+      is_required, is_key, default_value, placeholder, help_text,
+      min_value, max_value, options, validation_rules 
+    } = body;
+
+    if (!field_code || !field_name || !field_type) {
+      return c.json({ success: false, error: '필드 코드, 필드명, 데이터 타입은 필수입니다.' }, 400);
+    }
+
+    // Study 상태 확인
+    const study = await c.env.DB.prepare(`
+      SELECT status FROM studies WHERE id = ?
+    `).bind(studyId).first<{ status: string }>();
+
+    if (study?.status === 'LOCKED') {
+      return c.json({ success: false, error: '잠금된 Study에는 필드를 추가할 수 없습니다.' }, 400);
+    }
+
+    // 중복 필드 코드 확인
+    const existing = await c.env.DB.prepare(`
+      SELECT id FROM field_definitions WHERE form_definition_id = ? AND field_code = ?
+    `).bind(formId, field_code).first();
+
+    if (existing) {
+      return c.json({ success: false, error: '이미 존재하는 필드 코드입니다.' }, 400);
+    }
+
+    const fieldId = generateId('fld');
+    const timestamp = now();
+
+    await c.env.DB.prepare(`
+      INSERT INTO field_definitions (
+        id, form_definition_id, field_name, field_code, field_type, field_order,
+        is_required, is_key, default_value, placeholder, help_text,
+        min_value, max_value, options, validation_rules, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      fieldId, formId, field_name, field_code, field_type, field_order ?? 1,
+      is_required ? 1 : 0, is_key ? 1 : 0, default_value ?? null, placeholder ?? null, help_text ?? null,
+      min_value ?? null, max_value ?? null, options ?? null, validation_rules ?? null, timestamp
+    ).run();
+
+    const newField = await c.env.DB.prepare(`
+      SELECT * FROM field_definitions WHERE id = ?
+    `).bind(fieldId).first();
+
+    return c.json({ success: true, data: newField }, 201);
+  } catch (error) {
+    console.error('Create field definition error:', error);
+    return c.json({ success: false, error: 'Field Definition 생성 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * PUT /api/studies/:id/form-definitions/:formId/fields/:fieldId
+ * Field Definition 수정
+ */
+studies.put('/:id/form-definitions/:formId/fields/:fieldId', requireAuth, requirePermission('MANAGE_STUDY'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+    const fieldId = c.req.param('fieldId');
+    const body = await c.req.json();
+    const { 
+      field_name, field_type, field_order, 
+      is_required, is_key, default_value, placeholder, help_text,
+      min_value, max_value, options, validation_rules 
+    } = body;
+
+    // Study 상태 확인
+    const study = await c.env.DB.prepare(`
+      SELECT status FROM studies WHERE id = ?
+    `).bind(studyId).first<{ status: string }>();
+
+    if (study?.status === 'LOCKED') {
+      return c.json({ success: false, error: '잠금된 Study의 필드는 수정할 수 없습니다.' }, 400);
+    }
+
+    await c.env.DB.prepare(`
+      UPDATE field_definitions SET
+        field_name = COALESCE(?, field_name),
+        field_type = COALESCE(?, field_type),
+        field_order = COALESCE(?, field_order),
+        is_required = COALESCE(?, is_required),
+        is_key = COALESCE(?, is_key),
+        default_value = ?,
+        placeholder = ?,
+        help_text = ?,
+        min_value = ?,
+        max_value = ?,
+        options = ?,
+        validation_rules = ?
+      WHERE id = ?
+    `).bind(
+      field_name, field_type, field_order,
+      is_required !== undefined ? (is_required ? 1 : 0) : null,
+      is_key !== undefined ? (is_key ? 1 : 0) : null,
+      default_value ?? null, placeholder ?? null, help_text ?? null,
+      min_value ?? null, max_value ?? null, options ?? null, validation_rules ?? null,
+      fieldId
+    ).run();
+
+    const updated = await c.env.DB.prepare(`
+      SELECT * FROM field_definitions WHERE id = ?
+    `).bind(fieldId).first();
+
+    return c.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Update field definition error:', error);
+    return c.json({ success: false, error: 'Field Definition 수정 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * DELETE /api/studies/:id/form-definitions/:formId/fields/:fieldId
+ * Field Definition 삭제
+ */
+studies.delete('/:id/form-definitions/:formId/fields/:fieldId', requireAuth, requirePermission('MANAGE_STUDY'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+    const fieldId = c.req.param('fieldId');
+
+    // Study 상태 확인
+    const study = await c.env.DB.prepare(`
+      SELECT status FROM studies WHERE id = ?
+    `).bind(studyId).first<{ status: string }>();
+
+    if (study?.status === 'LOCKED') {
+      return c.json({ success: false, error: '잠금된 Study의 필드는 삭제할 수 없습니다.' }, 400);
+    }
+
+    // 해당 필드에 데이터가 있는지 확인
+    const usedCount = await c.env.DB.prepare(`
+      SELECT COUNT(*) as count FROM crf_data WHERE field_code = (
+        SELECT field_code FROM field_definitions WHERE id = ?
+      )
+    `).bind(fieldId).first<{ count: number }>();
+
+    if (usedCount && usedCount.count > 0) {
+      return c.json({ success: false, error: '이미 데이터가 입력된 필드는 삭제할 수 없습니다.' }, 400);
+    }
+
+    await c.env.DB.prepare(`
+      DELETE FROM field_definitions WHERE id = ?
+    `).bind(fieldId).run();
+
+    return c.json({ success: true, message: '필드가 삭제되었습니다.' });
+  } catch (error) {
+    console.error('Delete field definition error:', error);
+    return c.json({ success: false, error: 'Field Definition 삭제 중 오류가 발생했습니다.' }, 500);
   }
 });
 

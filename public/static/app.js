@@ -361,6 +361,9 @@
       case 'visit':
         loadVisitDetail(params.visitId);
         break;
+      case 'form':
+        loadFormDefinitionDetail(params.studyId, params.formId);
+        break;
       case 'queries':
         loadQueriesList(params);
         break;
@@ -838,18 +841,19 @@
           <div class="card-body compact">
             ${(study.formDefinitions || []).length === 0 ? `<div class="empty-state"><i class="fas fa-file-medical"></i><h3>등록된 CRF 양식이 없습니다</h3>${ui.canManage() && study.status !== 'LOCKED' ? `<p style="color: var(--text-secondary); margin-bottom: 16px;">CRF 데이터 수집을 위해 양식을 추가해 주세요</p><button class="btn btn-primary" onclick="showNewFormDefinitionModal('${study.id}')"><i class="fas fa-plus"></i> 양식 추가</button>` : ''}</div>` : `
               <table class="data-table">
-                <thead><tr><th>순서</th><th>양식 코드</th><th>양식명</th><th>방문</th><th>필수</th><th></th></tr></thead>
+                <thead><tr><th>순서</th><th>양식 코드</th><th>양식명</th><th>방문</th><th>필드</th><th>필수</th><th></th></tr></thead>
                 <tbody>
                   ${(study.formDefinitions || []).map(form => {
                     const visitSchedule = (study.visitSchedules || []).find(vs => vs.id === form.visit_schedule_id);
                     return `
-                    <tr>
+                    <tr class="clickable" onclick="navigateTo('form', {studyId: '${study.id}', formId: '${form.id}'})">
                       <td>${form.form_order || '-'}</td>
                       <td><strong>${form.form_code}</strong></td>
                       <td>${form.form_name}</td>
                       <td>${visitSchedule ? visitSchedule.visit_name : '전체'}</td>
+                      <td>${form.field_count || 0}개</td>
                       <td>${form.is_required ? '<span class="badge badge-active">필수</span>' : '<span class="badge badge-draft">선택</span>'}</td>
-                      <td>
+                      <td onclick="event.stopPropagation();">
                         ${ui.canManage() && study.status !== 'LOCKED' ? `
                           <button class="btn btn-secondary btn-sm" onclick="showEditFormDefinitionModal('${study.id}', '${form.id}')" style="padding: 4px 8px;"><i class="fas fa-edit"></i></button>
                           <button class="btn btn-secondary btn-sm" onclick="deleteFormDefinition('${study.id}', '${form.id}')" style="padding: 4px 8px;"><i class="fas fa-trash"></i></button>
@@ -1299,6 +1303,461 @@
     }
   }
   window.deleteFormDefinition = deleteFormDefinition;
+
+  // =====================================================
+  // FIELD DEFINITION (CRF 필드) 관리
+  // =====================================================
+  const FIELD_TYPES = [
+    { value: 'TEXT', label: '텍스트' },
+    { value: 'TEXTAREA', label: '긴 텍스트' },
+    { value: 'NUMBER', label: '숫자' },
+    { value: 'DATE', label: '날짜' },
+    { value: 'DATETIME', label: '날짜/시간' },
+    { value: 'TIME', label: '시간' },
+    { value: 'SELECT', label: '드롭다운' },
+    { value: 'RADIO', label: '라디오 버튼' },
+    { value: 'CHECKBOX', label: '체크박스' },
+    { value: 'CALCULATED', label: '계산 필드' }
+  ];
+
+  async function loadFormDefinitionDetail(studyId, formId) {
+    const mainContent = document.getElementById('main-content');
+    if (!mainContent) return;
+
+    mainContent.innerHTML = `<div class="loading"><div class="spinner"></div><span>양식 정보를 불러오는 중...</span></div>`;
+
+    try {
+      // Study 정보 로드
+      if (!state.currentStudy || state.currentStudy.id !== studyId) {
+        const studyResult = await api.get(`/studies/${studyId}`);
+        state.currentStudy = studyResult.data;
+      }
+      const study = state.currentStudy;
+      const form = (study.formDefinitions || []).find(f => f.id === formId);
+      
+      if (!form) {
+        throw new Error('양식을 찾을 수 없습니다.');
+      }
+
+      // 필드 정의 로드
+      const fieldsResult = await api.get(`/studies/${studyId}/form-definitions/${formId}/fields`);
+      const fields = fieldsResult.data || [];
+
+      state.currentForm = { ...form, fields };
+
+      mainContent.innerHTML = `
+        <div class="card">
+          <div class="card-body">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+              <div>
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                  <h1 style="font-size: 20px; font-weight: 600;">${form.form_code} - ${form.form_name}</h1>
+                  ${form.is_required ? '<span class="badge badge-active">필수</span>' : '<span class="badge badge-draft">선택</span>'}
+                </div>
+                <p style="color: var(--text-secondary);">${form.description || '설명 없음'}</p>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn btn-secondary btn-sm" onclick="navigateTo('study', {studyId: '${studyId}'})"><i class="fas fa-arrow-left"></i> 돌아가기</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">필드 목록 (${fields.length})</span>
+            ${ui.canManage() && study.status !== 'LOCKED' ? `<button class="btn btn-primary btn-sm" onclick="showNewFieldModal('${studyId}', '${formId}')"><i class="fas fa-plus"></i> 필드 추가</button>` : ''}
+          </div>
+          <div class="card-body compact">
+            ${fields.length === 0 ? `
+              <div class="empty-state">
+                <i class="fas fa-list-alt"></i>
+                <h3>등록된 필드가 없습니다</h3>
+                ${ui.canManage() && study.status !== 'LOCKED' ? `
+                  <p style="color: var(--text-secondary); margin-bottom: 16px;">CRF 양식에 데이터 필드를 추가해 주세요</p>
+                  <button class="btn btn-primary" onclick="showNewFieldModal('${studyId}', '${formId}')"><i class="fas fa-plus"></i> 필드 추가</button>
+                ` : ''}
+              </div>
+            ` : `
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th style="width:50px;">순서</th>
+                    <th>필드 코드</th>
+                    <th>필드명</th>
+                    <th>타입</th>
+                    <th>필수</th>
+                    <th>검증</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${fields.map(field => `
+                    <tr>
+                      <td>${field.field_order || '-'}</td>
+                      <td><strong>${field.field_code}</strong></td>
+                      <td>${field.field_name}</td>
+                      <td><span class="badge badge-draft">${FIELD_TYPES.find(t => t.value === field.field_type)?.label || field.field_type}</span></td>
+                      <td>${field.is_required ? '<i class="fas fa-check" style="color: var(--success);"></i>' : '-'}</td>
+                      <td style="font-size: 12px; color: var(--text-muted);">
+                        ${field.min_value ? `Min: ${field.min_value}` : ''}
+                        ${field.max_value ? `Max: ${field.max_value}` : ''}
+                        ${field.options ? `${JSON.parse(field.options).length}개 옵션` : ''}
+                      </td>
+                      <td>
+                        ${ui.canManage() && study.status !== 'LOCKED' ? `
+                          <button class="btn btn-secondary btn-sm" onclick="showEditFieldModal('${studyId}', '${formId}', '${field.id}')" style="padding: 4px 8px;"><i class="fas fa-edit"></i></button>
+                          <button class="btn btn-secondary btn-sm" onclick="deleteField('${studyId}', '${formId}', '${field.id}')" style="padding: 4px 8px;"><i class="fas fa-trash"></i></button>
+                        ` : ''}
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            `}
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">양식 미리보기</span>
+          </div>
+          <div class="card-body">
+            ${fields.length === 0 ? '<p style="color: var(--text-muted);">필드를 추가하면 미리보기가 표시됩니다.</p>' : `
+              <div style="max-width: 600px;">
+                ${fields.map(field => renderFieldPreview(field)).join('')}
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    } catch (error) {
+      mainContent.innerHTML = `<div class="empty-state" style="margin-top: 40px;"><i class="fas fa-exclamation-circle" style="color: var(--danger);"></i><h3>양식 로드 실패</h3><p style="color: var(--text-muted);">${error.message || '오류가 발생했습니다.'}</p><button class="btn btn-primary" style="margin-top: 16px;" onclick="history.back()">돌아가기</button></div>`;
+    }
+  }
+
+  function renderFieldPreview(field) {
+    const required = field.is_required ? '<span class="required">*</span>' : '';
+    let input = '';
+    
+    switch (field.field_type) {
+      case 'TEXT':
+        input = `<input type="text" class="form-input" placeholder="${field.placeholder || ''}" disabled>`;
+        break;
+      case 'TEXTAREA':
+        input = `<textarea class="form-input" rows="3" placeholder="${field.placeholder || ''}" disabled></textarea>`;
+        break;
+      case 'NUMBER':
+        input = `<input type="number" class="form-input" min="${field.min_value || ''}" max="${field.max_value || ''}" placeholder="${field.placeholder || ''}" disabled>`;
+        break;
+      case 'DATE':
+        input = `<input type="date" class="form-input" disabled>`;
+        break;
+      case 'DATETIME':
+        input = `<input type="datetime-local" class="form-input" disabled>`;
+        break;
+      case 'TIME':
+        input = `<input type="time" class="form-input" disabled>`;
+        break;
+      case 'SELECT':
+        const selectOptions = field.options ? JSON.parse(field.options) : [];
+        input = `<select class="form-input" disabled><option value="">선택하세요</option>${selectOptions.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}</select>`;
+        break;
+      case 'RADIO':
+        const radioOptions = field.options ? JSON.parse(field.options) : [];
+        input = `<div style="display: flex; flex-direction: column; gap: 8px;">${radioOptions.map(o => `<label style="display: flex; align-items: center; gap: 8px;"><input type="radio" name="${field.field_code}" disabled> ${o.label}</label>`).join('')}</div>`;
+        break;
+      case 'CHECKBOX':
+        const checkOptions = field.options ? JSON.parse(field.options) : [];
+        input = checkOptions.length > 0 
+          ? `<div style="display: flex; flex-direction: column; gap: 8px;">${checkOptions.map(o => `<label style="display: flex; align-items: center; gap: 8px;"><input type="checkbox" disabled> ${o.label}</label>`).join('')}</div>`
+          : `<label style="display: flex; align-items: center; gap: 8px;"><input type="checkbox" disabled> ${field.field_name}</label>`;
+        break;
+      case 'CALCULATED':
+        input = `<input type="text" class="form-input" style="background: var(--bg-tertiary);" placeholder="자동 계산" disabled>`;
+        break;
+      default:
+        input = `<input type="text" class="form-input" disabled>`;
+    }
+
+    return `
+      <div class="form-group">
+        <label class="form-label">${field.field_name} ${required}</label>
+        ${input}
+        ${field.help_text ? `<small style="color: var(--text-muted);">${field.help_text}</small>` : ''}
+      </div>
+    `;
+  }
+
+  function showNewFieldModal(studyId, formId) {
+    const form = state.currentForm;
+    const existingFields = form?.fields || [];
+    const maxOrder = existingFields.length > 0 
+      ? Math.max(...existingFields.map(f => f.field_order || 0)) 
+      : 0;
+
+    showModal('필드 추가', `
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="form-group">
+          <label class="form-label">필드 코드 <span class="required">*</span></label>
+          <input type="text" class="form-input" id="field-code" placeholder="예: BRTHDTC, SEX" style="text-transform: uppercase;">
+        </div>
+        <div class="form-group">
+          <label class="form-label">순서</label>
+          <input type="number" class="form-input" id="field-order" value="${maxOrder + 1}" min="1">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">필드명 <span class="required">*</span></label>
+        <input type="text" class="form-input" id="field-name" placeholder="예: 생년월일, 성별">
+      </div>
+      <div class="form-group">
+        <label class="form-label">데이터 타입 <span class="required">*</span></label>
+        <select class="form-input" id="field-type" onchange="toggleFieldOptions()">
+          ${FIELD_TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
+        </select>
+      </div>
+      <div id="field-options-container" style="display: none;">
+        <div class="form-group">
+          <label class="form-label">선택 옵션</label>
+          <textarea class="form-input" id="field-options" rows="4" placeholder="각 줄에 하나씩 입력 (형식: 값|라벨)&#10;예:&#10;M|남성&#10;F|여성&#10;OTHER|기타"></textarea>
+          <small style="color: var(--text-muted);">값|라벨 형식으로 각 줄에 하나씩 입력하세요.</small>
+        </div>
+      </div>
+      <div id="field-number-container" style="display: none;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div class="form-group">
+            <label class="form-label">최소값</label>
+            <input type="number" class="form-input" id="field-min" placeholder="예: 0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">최대값</label>
+            <input type="number" class="form-input" id="field-max" placeholder="예: 300">
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="field-required" checked> 필수 입력
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-label">도움말</label>
+        <input type="text" class="form-input" id="field-help" placeholder="입력 도움말 (선택사항)">
+      </div>
+    `, [
+      { label: '취소', onclick: 'closeModal()' },
+      { label: '추가', primary: true, onclick: `createField('${studyId}', '${formId}')` }
+    ]);
+
+    // 초기 타입에 따른 옵션 표시
+    setTimeout(() => toggleFieldOptions(), 100);
+  }
+  window.showNewFieldModal = showNewFieldModal;
+
+  function toggleFieldOptions() {
+    const fieldType = document.getElementById('field-type')?.value;
+    const optionsContainer = document.getElementById('field-options-container');
+    const numberContainer = document.getElementById('field-number-container');
+    
+    if (optionsContainer) {
+      optionsContainer.style.display = ['SELECT', 'RADIO', 'CHECKBOX'].includes(fieldType) ? 'block' : 'none';
+    }
+    if (numberContainer) {
+      numberContainer.style.display = fieldType === 'NUMBER' ? 'block' : 'none';
+    }
+  }
+  window.toggleFieldOptions = toggleFieldOptions;
+
+  async function createField(studyId, formId) {
+    const fieldCode = document.getElementById('field-code')?.value?.trim().toUpperCase();
+    const fieldName = document.getElementById('field-name')?.value?.trim();
+    const fieldType = document.getElementById('field-type')?.value;
+    const fieldOrder = parseInt(document.getElementById('field-order')?.value) || 1;
+    const isRequired = document.getElementById('field-required')?.checked ?? true;
+    const helpText = document.getElementById('field-help')?.value?.trim();
+    const minValue = document.getElementById('field-min')?.value;
+    const maxValue = document.getElementById('field-max')?.value;
+    const optionsText = document.getElementById('field-options')?.value?.trim();
+
+    if (!fieldCode || !fieldName || !fieldType) {
+      showToast('필드 코드, 필드명, 데이터 타입은 필수입니다.', 'error');
+      return;
+    }
+
+    // 옵션 파싱
+    let options = null;
+    if (optionsText && ['SELECT', 'RADIO', 'CHECKBOX'].includes(fieldType)) {
+      try {
+        options = optionsText.split('\n').filter(line => line.trim()).map(line => {
+          const parts = line.split('|');
+          return { value: parts[0].trim(), label: parts[1]?.trim() || parts[0].trim() };
+        });
+      } catch (e) {
+        showToast('옵션 형식이 올바르지 않습니다.', 'error');
+        return;
+      }
+    }
+
+    try {
+      await api.post(`/studies/${studyId}/form-definitions/${formId}/fields`, {
+        field_code: fieldCode,
+        field_name: fieldName,
+        field_type: fieldType,
+        field_order: fieldOrder,
+        is_required: isRequired,
+        help_text: helpText || null,
+        min_value: minValue || null,
+        max_value: maxValue || null,
+        options: options ? JSON.stringify(options) : null
+      });
+      closeModal();
+      showToast('필드가 추가되었습니다.', 'success');
+      loadFormDefinitionDetail(studyId, formId);
+    } catch (error) {
+      showToast(error.error || '추가에 실패했습니다.', 'error');
+    }
+  }
+  window.createField = createField;
+
+  function showEditFieldModal(studyId, formId, fieldId) {
+    const form = state.currentForm;
+    const field = (form?.fields || []).find(f => f.id === fieldId);
+    if (!field) return;
+
+    // 옵션을 텍스트로 변환
+    let optionsText = '';
+    if (field.options) {
+      try {
+        const opts = JSON.parse(field.options);
+        optionsText = opts.map(o => `${o.value}|${o.label}`).join('\n');
+      } catch (e) {}
+    }
+
+    showModal('필드 수정', `
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="form-group">
+          <label class="form-label">필드 코드</label>
+          <input type="text" class="form-input" value="${field.field_code}" readonly style="background: var(--bg-tertiary);">
+        </div>
+        <div class="form-group">
+          <label class="form-label">순서</label>
+          <input type="number" class="form-input" id="field-edit-order" value="${field.field_order || 1}" min="1">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">필드명 <span class="required">*</span></label>
+        <input type="text" class="form-input" id="field-edit-name" value="${field.field_name || ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">데이터 타입</label>
+        <select class="form-input" id="field-edit-type" onchange="toggleEditFieldOptions()">
+          ${FIELD_TYPES.map(t => `<option value="${t.value}" ${field.field_type === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
+        </select>
+      </div>
+      <div id="field-edit-options-container" style="display: ${['SELECT', 'RADIO', 'CHECKBOX'].includes(field.field_type) ? 'block' : 'none'};">
+        <div class="form-group">
+          <label class="form-label">선택 옵션</label>
+          <textarea class="form-input" id="field-edit-options" rows="4" placeholder="값|라벨">${optionsText}</textarea>
+        </div>
+      </div>
+      <div id="field-edit-number-container" style="display: ${field.field_type === 'NUMBER' ? 'block' : 'none'};">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div class="form-group">
+            <label class="form-label">최소값</label>
+            <input type="number" class="form-input" id="field-edit-min" value="${field.min_value || ''}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">최대값</label>
+            <input type="number" class="form-input" id="field-edit-max" value="${field.max_value || ''}">
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="field-edit-required" ${field.is_required ? 'checked' : ''}> 필수 입력
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-label">도움말</label>
+        <input type="text" class="form-input" id="field-edit-help" value="${field.help_text || ''}">
+      </div>
+    `, [
+      { label: '취소', onclick: 'closeModal()' },
+      { label: '저장', primary: true, onclick: `updateField('${studyId}', '${formId}', '${fieldId}')` }
+    ]);
+  }
+  window.showEditFieldModal = showEditFieldModal;
+
+  function toggleEditFieldOptions() {
+    const fieldType = document.getElementById('field-edit-type')?.value;
+    const optionsContainer = document.getElementById('field-edit-options-container');
+    const numberContainer = document.getElementById('field-edit-number-container');
+    
+    if (optionsContainer) {
+      optionsContainer.style.display = ['SELECT', 'RADIO', 'CHECKBOX'].includes(fieldType) ? 'block' : 'none';
+    }
+    if (numberContainer) {
+      numberContainer.style.display = fieldType === 'NUMBER' ? 'block' : 'none';
+    }
+  }
+  window.toggleEditFieldOptions = toggleEditFieldOptions;
+
+  async function updateField(studyId, formId, fieldId) {
+    const fieldName = document.getElementById('field-edit-name')?.value?.trim();
+    const fieldType = document.getElementById('field-edit-type')?.value;
+    const fieldOrder = parseInt(document.getElementById('field-edit-order')?.value) || 1;
+    const isRequired = document.getElementById('field-edit-required')?.checked ?? true;
+    const helpText = document.getElementById('field-edit-help')?.value?.trim();
+    const minValue = document.getElementById('field-edit-min')?.value;
+    const maxValue = document.getElementById('field-edit-max')?.value;
+    const optionsText = document.getElementById('field-edit-options')?.value?.trim();
+
+    if (!fieldName) {
+      showToast('필드명은 필수입니다.', 'error');
+      return;
+    }
+
+    let options = null;
+    if (optionsText && ['SELECT', 'RADIO', 'CHECKBOX'].includes(fieldType)) {
+      options = optionsText.split('\n').filter(line => line.trim()).map(line => {
+        const parts = line.split('|');
+        return { value: parts[0].trim(), label: parts[1]?.trim() || parts[0].trim() };
+      });
+    }
+
+    try {
+      await api.put(`/studies/${studyId}/form-definitions/${formId}/fields/${fieldId}`, {
+        field_name: fieldName,
+        field_type: fieldType,
+        field_order: fieldOrder,
+        is_required: isRequired,
+        help_text: helpText || null,
+        min_value: minValue || null,
+        max_value: maxValue || null,
+        options: options ? JSON.stringify(options) : null
+      });
+      closeModal();
+      showToast('필드가 수정되었습니다.', 'success');
+      loadFormDefinitionDetail(studyId, formId);
+    } catch (error) {
+      showToast(error.error || '수정에 실패했습니다.', 'error');
+    }
+  }
+  window.updateField = updateField;
+
+  async function deleteField(studyId, formId, fieldId) {
+    if (!confirm('이 필드를 삭제하시겠습니까?')) return;
+
+    try {
+      await api.delete(`/studies/${studyId}/form-definitions/${formId}/fields/${fieldId}`);
+      showToast('필드가 삭제되었습니다.', 'success');
+      loadFormDefinitionDetail(studyId, formId);
+    } catch (error) {
+      showToast(error.error || '삭제에 실패했습니다.', 'error');
+    }
+  }
+  window.deleteField = deleteField;
 
   // =====================================================
   // SITE CRUD
