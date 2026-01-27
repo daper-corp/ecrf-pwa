@@ -1,6 +1,6 @@
 // eCRF PWA - Frontend Application
 // Professional Clinical Data Management System
-// Version 3.1 - Full Functionality
+// Version 4.0 - Production Ready
 
 (function() {
   'use strict';
@@ -11,7 +11,14 @@
   const CONFIG = {
     sessionTimeout: 30 * 60 * 1000,
     autoSaveInterval: 30 * 1000,
+    apiTimeout: 30000,
+    maxRetries: 3,
+    debounceDelay: 300,
   };
+
+  // Error tracking
+  const errorLog = [];
+  const MAX_ERROR_LOG = 50;
 
   // =====================================================
   // STATE MANAGEMENT
@@ -30,18 +37,57 @@
   };
 
   // =====================================================
+  // UTILITY FUNCTIONS
+  // =====================================================
+  function debounce(func, wait) {
+    let timeout;
+    return function(...args) {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => func.apply(this, args), wait);
+    };
+  }
+
+  function sanitizeHTML(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function logError(context, error) {
+    const entry = {
+      timestamp: new Date().toISOString(),
+      context,
+      message: error?.message || error?.error || String(error),
+      stack: error?.stack
+    };
+    errorLog.unshift(entry);
+    if (errorLog.length > MAX_ERROR_LOG) errorLog.pop();
+    console.error(`[${context}]`, error);
+  }
+
+  // =====================================================
   // API CLIENT
   // =====================================================
   const api = {
     baseUrl: '/api',
+    pendingRequests: new Map(),
     
-    async request(method, path, data = null) {
+    async request(method, path, data = null, options = {}) {
       state.lastActivity = Date.now();
+      
+      const requestKey = `${method}:${path}`;
+      
+      // Prevent duplicate requests
+      if (options.dedupe && this.pendingRequests.has(requestKey)) {
+        return this.pendingRequests.get(requestKey);
+      }
       
       const config = {
         method,
         url: `${this.baseUrl}${path}`,
         headers: { 'Content-Type': 'application/json' },
+        timeout: options.timeout || CONFIG.apiTimeout,
       };
 
       if (state.token) {
@@ -50,22 +96,72 @@
 
       if (data) config.data = data;
 
-      try {
-        const response = await axios(config);
-        return response.data;
-      } catch (error) {
-        if (error.response?.status === 401) {
-          logout(false);
-          showToast('세션이 만료되었습니다.', 'error');
+      const requestPromise = (async () => {
+        let lastError;
+        const retries = options.retries ?? (method === 'GET' ? CONFIG.maxRetries : 0);
+        
+        for (let attempt = 0; attempt <= retries; attempt++) {
+          try {
+            const response = await axios(config);
+            return response.data;
+          } catch (error) {
+            lastError = error;
+            
+            if (error.response?.status === 401) {
+              logout(false);
+              showToast('세션이 만료되었습니다. 다시 로그인해 주세요.', 'error');
+              throw { error: '인증이 만료되었습니다.' };
+            }
+            
+            if (error.response?.status === 403) {
+              showToast('권한이 없습니다.', 'error');
+              throw error.response.data || { error: '접근 권한이 없습니다.' };
+            }
+            
+            if (error.response?.status === 404) {
+              throw error.response.data || { error: '요청한 리소스를 찾을 수 없습니다.' };
+            }
+            
+            if (error.response?.status >= 500) {
+              logError('API Server Error', { path, status: error.response.status, data: error.response.data });
+              if (attempt < retries) {
+                await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+                continue;
+              }
+            }
+            
+            if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+              logError('API Timeout', { path, attempt });
+              if (attempt < retries) {
+                await new Promise(r => setTimeout(r, 1000));
+                continue;
+              }
+              throw { error: '서버 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.' };
+            }
+            
+            if (!navigator.onLine) {
+              throw { error: '네트워크 연결을 확인해 주세요.' };
+            }
+            
+            throw error.response?.data || { error: '요청 처리 중 오류가 발생했습니다.' };
+          }
         }
-        throw error.response?.data || { error: '요청 처리 중 오류가 발생했습니다.' };
+        
+        throw lastError?.response?.data || { error: '요청 처리에 실패했습니다.' };
+      })();
+      
+      if (options.dedupe) {
+        this.pendingRequests.set(requestKey, requestPromise);
+        requestPromise.finally(() => this.pendingRequests.delete(requestKey));
       }
+      
+      return requestPromise;
     },
 
-    get(path) { return this.request('GET', path); },
-    post(path, data) { return this.request('POST', path, data); },
-    put(path, data) { return this.request('PUT', path, data); },
-    delete(path) { return this.request('DELETE', path); },
+    get(path, options) { return this.request('GET', path, null, options); },
+    post(path, data, options) { return this.request('POST', path, data, options); },
+    put(path, data, options) { return this.request('PUT', path, data, options); },
+    delete(path, options) { return this.request('DELETE', path, null, options); },
   };
 
   // =====================================================
@@ -89,12 +185,44 @@
 
     formatDate(dateStr) {
       if (!dateStr) return '-';
-      return new Date(dateStr).toLocaleDateString('ko-KR');
+      try {
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return '-';
+        return date.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+      } catch {
+        return '-';
+      }
     },
 
     formatDateTime(dateStr) {
       if (!dateStr) return '-';
-      return new Date(dateStr).toLocaleString('ko-KR');
+      try {
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return '-';
+        return date.toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      } catch {
+        return '-';
+      }
+    },
+    
+    formatRelativeTime(dateStr) {
+      if (!dateStr) return '-';
+      try {
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diff = now - date;
+        const minutes = Math.floor(diff / 60000);
+        const hours = Math.floor(diff / 3600000);
+        const days = Math.floor(diff / 86400000);
+        
+        if (minutes < 1) return '방금';
+        if (minutes < 60) return `${minutes}분 전`;
+        if (hours < 24) return `${hours}시간 전`;
+        if (days < 7) return `${days}일 전`;
+        return this.formatDate(dateStr);
+      } catch {
+        return '-';
+      }
     },
 
     getInitials(name) {
@@ -159,44 +287,97 @@
   // =====================================================
   // TOAST NOTIFICATIONS
   // =====================================================
-  function showToast(message, type = 'info') {
+  const toastQueue = [];
+  let isProcessingToast = false;
+  
+  function showToast(message, type = 'info', duration = 4000) {
     const container = document.getElementById('toast-container');
     if (!container) return;
     
+    // Prevent duplicate messages
+    const existing = Array.from(container.querySelectorAll('.toast span'));
+    if (existing.some(el => el.textContent === message)) return;
+    
+    const icons = {
+      success: 'check-circle',
+      error: 'times-circle',
+      warning: 'exclamation-triangle',
+      info: 'info-circle'
+    };
+    
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
+    toast.setAttribute('role', 'alert');
+    toast.setAttribute('aria-live', 'polite');
     toast.innerHTML = `
-      <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'times-circle' : type === 'warning' ? 'exclamation-triangle' : 'info-circle'}"></i>
-      <span>${message}</span>
+      <i class="fas fa-${icons[type] || 'info-circle'}" aria-hidden="true"></i>
+      <span>${sanitizeHTML(message)}</span>
+      <button class="toast-close" onclick="this.parentElement.remove()" aria-label="닫기">
+        <i class="fas fa-times"></i>
+      </button>
     `;
     
+    // Add toast close button styles inline if not present
+    const style = toast.querySelector('.toast-close');
+    if (style) {
+      style.style.cssText = 'background:none;border:none;color:inherit;cursor:pointer;padding:4px;margin-left:8px;opacity:0.7;';
+    }
+    
     container.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
+    
+    // Animate in
+    toast.style.transform = 'translateY(20px)';
+    toast.style.opacity = '0';
+    requestAnimationFrame(() => {
+      toast.style.transition = 'transform 0.2s, opacity 0.2s';
+      toast.style.transform = 'translateY(0)';
+      toast.style.opacity = '1';
+    });
+    
+    setTimeout(() => {
+      toast.style.transform = 'translateY(-20px)';
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 200);
+    }, duration);
   }
   window.showToast = showToast;
 
   // =====================================================
   // MODAL
   // =====================================================
-  function showModal(title, content, actions = []) {
+  let modalStack = [];
+  let previousActiveElement = null;
+  
+  function showModal(title, content, actions = [], options = {}) {
     const container = document.getElementById('modal-container');
     if (!container) return;
     
+    previousActiveElement = document.activeElement;
+    
+    const modalId = `modal-${Date.now()}`;
+    const size = options.size || 'default'; // 'small', 'default', 'large', 'fullscreen'
+    const sizeClass = size === 'small' ? 'max-width: 400px;' : size === 'large' ? 'max-width: 800px;' : size === 'fullscreen' ? 'max-width: 95%; max-height: 95%;' : 'max-width: 560px;';
+    
     container.innerHTML = `
-      <div class="modal-overlay" onclick="closeModal()">
-        <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-overlay" id="${modalId}" role="dialog" aria-modal="true" aria-labelledby="${modalId}-title">
+        <div class="modal" style="${sizeClass}" onclick="event.stopPropagation()">
           <div class="modal-header">
-            <span class="modal-title">${title}</span>
-            <button class="modal-close" onclick="closeModal()">
-              <i class="fas fa-times"></i>
+            <span class="modal-title" id="${modalId}-title">${sanitizeHTML(title)}</span>
+            <button class="modal-close" onclick="closeModal()" aria-label="닫기">
+              <i class="fas fa-times" aria-hidden="true"></i>
             </button>
           </div>
-          <div class="modal-body">${content}</div>
+          <div class="modal-body" tabindex="-1">${content}</div>
           ${actions.length > 0 ? `
             <div class="modal-footer">
-              ${actions.map(a => `
-                <button class="btn ${a.primary ? 'btn-primary' : a.danger ? 'btn-danger' : 'btn-secondary'}" onclick="${a.onclick}">
-                  ${a.label}
+              ${actions.map((a, i) => `
+                <button 
+                  class="btn ${a.primary ? 'btn-primary' : a.danger ? 'btn-danger' : 'btn-secondary'}" 
+                  onclick="${a.onclick}"
+                  ${a.disabled ? 'disabled' : ''}
+                  ${i === actions.length - 1 ? 'data-autofocus' : ''}
+                >
+                  ${a.icon ? `<i class="fas fa-${a.icon}" aria-hidden="true"></i> ` : ''}${sanitizeHTML(a.label)}
                 </button>
               `).join('')}
             </div>
@@ -204,14 +385,92 @@
         </div>
       </div>
     `;
+    
+    modalStack.push(modalId);
+    document.body.style.overflow = 'hidden';
+    
+    // Focus management
+    requestAnimationFrame(() => {
+      const autofocus = container.querySelector('[data-autofocus]');
+      const firstInput = container.querySelector('input:not([type="hidden"]), select, textarea');
+      (autofocus || firstInput || container.querySelector('.modal-body'))?.focus();
+    });
+    
+    // Keyboard handling
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        closeModal();
+      }
+      // Trap focus within modal
+      if (e.key === 'Tab') {
+        const modal = container.querySelector('.modal');
+        const focusables = modal?.querySelectorAll('button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        if (focusables?.length) {
+          const first = focusables[0];
+          const last = focusables[focusables.length - 1];
+          if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeydown);
+    container._keydownHandler = handleKeydown;
+    
+    // Click outside to close
+    const overlay = container.querySelector('.modal-overlay');
+    if (overlay && !options.persistent) {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeModal();
+      });
+    }
   }
   window.showModal = showModal;
 
   function closeModal() {
     const container = document.getElementById('modal-container');
-    if (container) container.innerHTML = '';
+    if (!container || !modalStack.length) return;
+    
+    modalStack.pop();
+    
+    if (container._keydownHandler) {
+      document.removeEventListener('keydown', container._keydownHandler);
+      delete container._keydownHandler;
+    }
+    
+    container.innerHTML = '';
+    document.body.style.overflow = '';
+    
+    // Restore focus
+    if (previousActiveElement && previousActiveElement.focus) {
+      previousActiveElement.focus();
+    }
   }
   window.closeModal = closeModal;
+  
+  // Confirmation dialog helper
+  function showConfirm(message, options = {}) {
+    return new Promise((resolve) => {
+      const title = options.title || '확인';
+      const confirmLabel = options.confirmLabel || '확인';
+      const cancelLabel = options.cancelLabel || '취소';
+      const isDanger = options.danger || false;
+      
+      window._confirmResolve = resolve;
+      
+      showModal(title, `
+        <p style="color: var(--text-secondary); line-height: 1.6;">${sanitizeHTML(message)}</p>
+      `, [
+        { label: cancelLabel, onclick: 'window._confirmResolve(false); closeModal();' },
+        { label: confirmLabel, [isDanger ? 'danger' : 'primary']: true, onclick: 'window._confirmResolve(true); closeModal();' }
+      ], { size: 'small' });
+    });
+  }
+  window.showConfirm = showConfirm;
 
   // =====================================================
   // AUTHENTICATION
@@ -1135,7 +1394,12 @@
   window.updateVisitSchedule = updateVisitSchedule;
 
   async function deleteVisitSchedule(studyId, vsId) {
-    if (!confirm('이 방문 일정을 삭제하시겠습니까?')) return;
+    const confirmed = await showConfirm('이 방문 일정을 삭제하시겠습니까?', {
+      title: '방문 일정 삭제',
+      confirmLabel: '삭제',
+      danger: true
+    });
+    if (!confirmed) return;
 
     try {
       await api.delete(`/studies/${studyId}/visit-schedules/${vsId}`);
@@ -1297,7 +1561,12 @@
   window.updateFormDefinition = updateFormDefinition;
 
   async function deleteFormDefinition(studyId, formId) {
-    if (!confirm('이 CRF 양식을 삭제하시겠습니까?')) return;
+    const confirmed = await showConfirm('이 CRF 양식을 삭제하시겠습니까?\n삭제하면 관련된 모든 필드도 함께 삭제됩니다.', {
+      title: 'CRF 양식 삭제',
+      confirmLabel: '삭제',
+      danger: true
+    });
+    if (!confirmed) return;
 
     try {
       await api.delete(`/studies/${studyId}/form-definitions/${formId}`);
@@ -2177,7 +2446,11 @@
   window.updateSubject = updateSubject;
 
   async function enrollSubject(subjectId) {
-    if (!confirm('이 피험자를 등록하시겠습니까?')) return;
+    const confirmed = await showConfirm('이 피험자를 등록하시겠습니까?\n등록 후에는 스크리닝 상태로 되돌릴 수 없습니다.', {
+      title: '피험자 등록',
+      confirmLabel: '등록'
+    });
+    if (!confirmed) return;
     
     try {
       await api.put(`/subjects/${subjectId}`, { status: 'ENROLLED', enrolled_date: new Date().toISOString().split('T')[0] });
