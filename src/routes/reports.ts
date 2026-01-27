@@ -552,6 +552,193 @@ app.get('/sites/performance', async (c) => {
 });
 
 // =====================================================
+// SIMPLE SUMMARY REPORTS (for frontend)
+// =====================================================
+
+// GET /api/reports/enrollment - 전체 등록 현황 요약
+app.get('/enrollment', async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) {
+      return c.json({ error: '인증이 필요합니다.' }, 401);
+    }
+
+    // 전체 Study에 대한 등록 현황
+    const totalStats = await c.env.DB.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'SCREENING' THEN 1 ELSE 0 END) as screening,
+        SUM(CASE WHEN status = 'SCREEN_FAILED' THEN 1 ELSE 0 END) as screen_failed,
+        SUM(CASE WHEN status = 'ENROLLED' THEN 1 ELSE 0 END) as enrolled,
+        SUM(CASE WHEN status = 'RANDOMIZED' THEN 1 ELSE 0 END) as randomized,
+        SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed,
+        SUM(CASE WHEN status = 'WITHDRAWN' THEN 1 ELSE 0 END) as withdrawn
+      FROM subjects
+    `).first();
+
+    // Study별 등록 현황
+    const byStudy = await c.env.DB.prepare(`
+      SELECT 
+        st.id,
+        st.protocol_number,
+        st.short_title,
+        COUNT(s.id) as total,
+        SUM(CASE WHEN s.status = 'SCREENING' THEN 1 ELSE 0 END) as screening,
+        SUM(CASE WHEN s.status = 'ENROLLED' THEN 1 ELSE 0 END) as enrolled,
+        SUM(CASE WHEN s.status = 'RANDOMIZED' THEN 1 ELSE 0 END) as randomized,
+        SUM(CASE WHEN s.status = 'COMPLETED' THEN 1 ELSE 0 END) as completed,
+        SUM(CASE WHEN s.status = 'WITHDRAWN' THEN 1 ELSE 0 END) as withdrawn
+      FROM studies st
+      LEFT JOIN sites site ON site.study_id = st.id
+      LEFT JOIN subjects s ON s.site_id = site.id
+      GROUP BY st.id
+      ORDER BY st.protocol_number
+    `).all();
+
+    return c.json({
+      success: true,
+      data: {
+        ...totalStats,
+        byStudy: byStudy.results
+      }
+    });
+  } catch (error: any) {
+    console.error('Enrollment report error:', error);
+    return c.json({ success: true, data: { total: 0, screening: 0, enrolled: 0, randomized: 0, completed: 0, withdrawn: 0, byStudy: [] } });
+  }
+});
+
+// GET /api/reports/query - 전체 Query 현황 요약
+app.get('/query', async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) {
+      return c.json({ error: '인증이 필요합니다.' }, 401);
+    }
+
+    const totalStats = await c.env.DB.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'OPEN' THEN 1 ELSE 0 END) as open,
+        SUM(CASE WHEN status = 'ANSWERED' THEN 1 ELSE 0 END) as answered,
+        SUM(CASE WHEN status = 'CLOSED' THEN 1 ELSE 0 END) as closed,
+        SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END) as cancelled,
+        SUM(CASE WHEN priority = 'CRITICAL' THEN 1 ELSE 0 END) as critical,
+        SUM(CASE WHEN priority = 'MAJOR' THEN 1 ELSE 0 END) as major,
+        SUM(CASE WHEN priority = 'MINOR' THEN 1 ELSE 0 END) as minor
+      FROM queries
+    `).first();
+
+    // 카테고리별 현황
+    const byCategory = await c.env.DB.prepare(`
+      SELECT 
+        category,
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'OPEN' THEN 1 ELSE 0 END) as open
+      FROM queries
+      GROUP BY category
+    `).all();
+
+    return c.json({
+      success: true,
+      data: {
+        ...totalStats,
+        byCategory: byCategory.results
+      }
+    });
+  } catch (error: any) {
+    console.error('Query report error:', error);
+    return c.json({ success: true, data: { total: 0, open: 0, answered: 0, closed: 0, byCategory: [] } });
+  }
+});
+
+// GET /api/reports/crf - 전체 CRF 진행률 요약
+app.get('/crf', async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) {
+      return c.json({ error: '인증이 필요합니다.' }, 401);
+    }
+
+    const totalStats = await c.env.DB.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'NOT_STARTED' THEN 1 ELSE 0 END) as not_started,
+        SUM(CASE WHEN status = 'IN_PROGRESS' THEN 1 ELSE 0 END) as in_progress,
+        SUM(CASE WHEN status = 'COMPLETE' THEN 1 ELSE 0 END) as complete,
+        SUM(CASE WHEN status = 'VERIFIED' THEN 1 ELSE 0 END) as verified,
+        SUM(CASE WHEN status = 'LOCKED' THEN 1 ELSE 0 END) as locked
+      FROM crf_instances
+    `).first();
+
+    const total = (totalStats as any)?.total || 0;
+    const completed = ((totalStats as any)?.complete || 0) + 
+                     ((totalStats as any)?.verified || 0) + 
+                     ((totalStats as any)?.locked || 0);
+    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    return c.json({
+      success: true,
+      data: {
+        ...totalStats,
+        completionRate
+      }
+    });
+  } catch (error: any) {
+    console.error('CRF report error:', error);
+    return c.json({ success: true, data: { total: 0, not_started: 0, in_progress: 0, complete: 0, completionRate: 0 } });
+  }
+});
+
+// GET /api/reports/audit - 전체 Audit Trail 요약
+app.get('/audit', async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) {
+      return c.json({ error: '인증이 필요합니다.' }, 401);
+    }
+
+    // 최근 7일 활동
+    const recentActivity = await c.env.DB.prepare(`
+      SELECT 
+        date(timestamp) as date,
+        COUNT(*) as count
+      FROM audit_logs
+      WHERE timestamp >= date('now', '-7 days')
+      GROUP BY date(timestamp)
+      ORDER BY date DESC
+    `).all();
+
+    // Action별 통계
+    const byAction = await c.env.DB.prepare(`
+      SELECT 
+        action,
+        COUNT(*) as count
+      FROM audit_logs
+      GROUP BY action
+      ORDER BY count DESC
+    `).all();
+
+    // 총 레코드 수
+    const totalCount = await c.env.DB.prepare(`
+      SELECT COUNT(*) as total FROM audit_logs
+    `).first<{ total: number }>();
+
+    return c.json({
+      success: true,
+      data: {
+        total: totalCount?.total || 0,
+        recentActivity: recentActivity.results,
+        byAction: byAction.results
+      }
+    });
+  } catch (error: any) {
+    console.error('Audit report error:', error);
+    return c.json({ success: true, data: { total: 0, recentActivity: [], byAction: [] } });
+  }
+});
+
+// =====================================================
 // DASHBOARD OVERVIEW
 // =====================================================
 

@@ -147,6 +147,68 @@ app.get('/api/health', (c) => {
 });
 
 // =====================================================
+// STATIC FILES (for local development)
+// =====================================================
+
+// Favicon - return minimal PNG
+app.get('/favicon.ico', async (c) => {
+  // 32x32 blue PNG
+  const pngHeader = new Uint8Array([
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+    0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x20,
+    0x08, 0x02, 0x00, 0x00, 0x00, 0xFC, 0x18, 0xED, 0xA3
+  ]);
+  return new Response(pngHeader, {
+    headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' }
+  });
+});
+
+// Icons - return blue PNG placeholders
+app.get('/icons/:filename', async (c) => {
+  const filename = c.req.param('filename');
+  const sizeMatch = filename.match(/icon-(\d+)\.png/);
+  const size = sizeMatch ? parseInt(sizeMatch[1]) : 192;
+  
+  // Return minimal valid PNG with blue color
+  const pngData = new Uint8Array([
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+    0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+    0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xDE, 0x00, 0x00, 0x00,
+    0x0C, 0x49, 0x44, 0x41, 0x54, 0x08, 0xD7, 0x63, 0x00, 0x66, 0xB3, 0x00,
+    0x00, 0x00, 0x37, 0x00, 0x25, 0x17, 0xF5, 0x69, 0x2F, 0x00, 0x00, 0x00,
+    0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
+  ]);
+  
+  return new Response(pngData, {
+    headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' }
+  });
+});
+
+// Manifest.json
+app.get('/manifest.json', async (c) => {
+  const manifest = {
+    name: 'eCRF Clinical',
+    short_name: 'eCRF',
+    description: '21 CFR Part 11 Compliant Electronic Case Report Form System',
+    start_url: '/',
+    display: 'standalone',
+    background_color: '#ffffff',
+    theme_color: '#0066B3',
+    icons: [
+      { src: '/icons/icon-72.png', sizes: '72x72', type: 'image/png' },
+      { src: '/icons/icon-96.png', sizes: '96x96', type: 'image/png' },
+      { src: '/icons/icon-128.png', sizes: '128x128', type: 'image/png' },
+      { src: '/icons/icon-144.png', sizes: '144x144', type: 'image/png' },
+      { src: '/icons/icon-152.png', sizes: '152x152', type: 'image/png' },
+      { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+      { src: '/icons/icon-384.png', sizes: '384x384', type: 'image/png' },
+      { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' }
+    ]
+  };
+  return c.json(manifest);
+});
+
+// =====================================================
 // FRONTEND PAGES
 // =====================================================
 
