@@ -800,11 +800,15 @@
           <i class="fas fa-user-circle mr-1"></i>
           ${state.user.name} (${ui.getRoleName(state.user.role)})
         </span>
+        <button id="btn-settings" class="p-2 text-gray-600 hover:text-ecrf-blue hover:bg-gray-100 rounded-full transition" title="설정">
+          <i class="fas fa-cog text-lg"></i>
+        </button>
         <button id="btn-logout" class="text-sm text-gray-600 hover:text-red-600 transition">
           <i class="fas fa-sign-out-alt mr-1"></i> 로그아웃
         </button>
       `;
       
+      document.getElementById('btn-settings').addEventListener('click', () => showSettings());
       document.getElementById('btn-logout').addEventListener('click', () => logout());
       
       ui.setText('#user-name', state.user.name);
