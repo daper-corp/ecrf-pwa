@@ -801,6 +801,37 @@
 
         <div class="card">
           <div class="card-header">
+            <span class="card-title">방문 일정 (${(study.visitSchedules || []).length})</span>
+            ${ui.canManage() && study.status !== 'LOCKED' ? `<button class="btn btn-primary btn-sm" onclick="showNewVisitScheduleModal('${study.id}')"><i class="fas fa-plus"></i> 방문 추가</button>` : ''}
+          </div>
+          <div class="card-body compact">
+            ${(study.visitSchedules || []).length === 0 ? `<div class="empty-state"><i class="fas fa-calendar-alt"></i><h3>등록된 방문 일정이 없습니다</h3>${ui.canManage() && study.status !== 'LOCKED' ? `<p style="color: var(--text-secondary); margin-bottom: 16px;">Study에 방문 일정을 추가해 주세요</p><button class="btn btn-primary" onclick="showNewVisitScheduleModal('${study.id}')"><i class="fas fa-plus"></i> 방문 추가</button>` : ''}</div>` : `
+              <table class="data-table">
+                <thead><tr><th>번호</th><th>방문명</th><th>예정일(Day)</th><th>Window</th><th>필수</th><th></th></tr></thead>
+                <tbody>
+                  ${(study.visitSchedules || []).map(vs => `
+                    <tr>
+                      <td><strong>V${vs.visit_number}</strong></td>
+                      <td>${vs.visit_name}</td>
+                      <td>Day ${vs.target_day || 0}</td>
+                      <td>-${vs.visit_window_before || 0} / +${vs.visit_window_after || 0}</td>
+                      <td>${vs.is_required ? '<span class="badge badge-active">필수</span>' : '<span class="badge badge-draft">선택</span>'}</td>
+                      <td>
+                        ${ui.canManage() && study.status !== 'LOCKED' ? `
+                          <button class="btn btn-secondary btn-sm" onclick="showEditVisitScheduleModal('${study.id}', '${vs.id}')" style="padding: 4px 8px;"><i class="fas fa-edit"></i></button>
+                          <button class="btn btn-secondary btn-sm" onclick="deleteVisitSchedule('${study.id}', '${vs.id}')" style="padding: 4px 8px;"><i class="fas fa-trash"></i></button>
+                        ` : ''}
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            `}
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
             <span class="card-title">연구기관 목록 (${sites.length})</span>
             ${ui.canManage() ? `<button class="btn btn-primary btn-sm" onclick="showNewSiteModal('${study.id}')"><i class="fas fa-plus"></i> 기관 추가</button>` : ''}
           </div>
@@ -901,6 +932,178 @@
     }
   }
   window.unlockStudy = unlockStudy;
+
+  // =====================================================
+  // VISIT SCHEDULE CRUD
+  // =====================================================
+  function showNewVisitScheduleModal(studyId) {
+    // 기존 방문 일정에서 다음 방문 번호 계산
+    const study = state.currentStudy;
+    const existingSchedules = study?.visitSchedules || [];
+    const maxVisitNumber = existingSchedules.length > 0 
+      ? Math.max(...existingSchedules.map(vs => vs.visit_number)) 
+      : 0;
+    const nextVisitNumber = maxVisitNumber + 1;
+
+    showModal('방문 일정 추가', `
+      <div class="form-group">
+        <label class="form-label">방문 번호 <span class="required">*</span></label>
+        <input type="number" class="form-input" id="vs-visit-number" value="${nextVisitNumber}" min="1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">방문명 <span class="required">*</span></label>
+        <input type="text" class="form-input" id="vs-visit-name" placeholder="예: Screening, Week 1, End of Treatment">
+      </div>
+      <div class="form-group">
+        <label class="form-label">예정일 (Day)</label>
+        <input type="number" class="form-input" id="vs-target-day" value="0" min="0" placeholder="스크리닝 기준 일수">
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="form-group">
+          <label class="form-label">Window (-일)</label>
+          <input type="number" class="form-input" id="vs-window-before" value="0" min="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Window (+일)</label>
+          <input type="number" class="form-input" id="vs-window-after" value="0" min="0">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="vs-is-required" checked> 필수 방문
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-label">설명</label>
+        <textarea class="form-input" id="vs-description" rows="2" placeholder="방문에 대한 설명"></textarea>
+      </div>
+    `, [
+      { label: '취소', onclick: 'closeModal()' },
+      { label: '추가', primary: true, onclick: `createVisitSchedule('${studyId}')` }
+    ]);
+  }
+  window.showNewVisitScheduleModal = showNewVisitScheduleModal;
+
+  async function createVisitSchedule(studyId) {
+    const visitNumber = parseInt(document.getElementById('vs-visit-number')?.value);
+    const visitName = document.getElementById('vs-visit-name')?.value?.trim();
+    const targetDay = parseInt(document.getElementById('vs-target-day')?.value) || 0;
+    const windowBefore = parseInt(document.getElementById('vs-window-before')?.value) || 0;
+    const windowAfter = parseInt(document.getElementById('vs-window-after')?.value) || 0;
+    const isRequired = document.getElementById('vs-is-required')?.checked ?? true;
+    const description = document.getElementById('vs-description')?.value?.trim();
+
+    if (!visitName || !visitNumber) {
+      showToast('방문명과 방문 번호는 필수입니다.', 'error');
+      return;
+    }
+
+    try {
+      await api.post(`/studies/${studyId}/visit-schedules`, {
+        visit_name: visitName,
+        visit_number: visitNumber,
+        target_day: targetDay,
+        visit_window_before: windowBefore,
+        visit_window_after: windowAfter,
+        is_required: isRequired,
+        description: description || null
+      });
+      closeModal();
+      showToast('방문 일정이 추가되었습니다.', 'success');
+      loadStudyDetail(studyId);
+    } catch (error) {
+      showToast(error.error || '추가에 실패했습니다.', 'error');
+    }
+  }
+  window.createVisitSchedule = createVisitSchedule;
+
+  function showEditVisitScheduleModal(studyId, vsId) {
+    const study = state.currentStudy;
+    const vs = (study?.visitSchedules || []).find(v => v.id === vsId);
+    if (!vs) return;
+
+    showModal('방문 일정 수정', `
+      <div class="form-group">
+        <label class="form-label">방문 번호</label>
+        <input type="number" class="form-input" value="${vs.visit_number}" readonly style="background: var(--bg-tertiary);">
+      </div>
+      <div class="form-group">
+        <label class="form-label">방문명 <span class="required">*</span></label>
+        <input type="text" class="form-input" id="vs-edit-visit-name" value="${vs.visit_name || ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">예정일 (Day)</label>
+        <input type="number" class="form-input" id="vs-edit-target-day" value="${vs.target_day || 0}" min="0">
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="form-group">
+          <label class="form-label">Window (-일)</label>
+          <input type="number" class="form-input" id="vs-edit-window-before" value="${vs.visit_window_before || 0}" min="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Window (+일)</label>
+          <input type="number" class="form-input" id="vs-edit-window-after" value="${vs.visit_window_after || 0}" min="0">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="vs-edit-is-required" ${vs.is_required ? 'checked' : ''}> 필수 방문
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-label">설명</label>
+        <textarea class="form-input" id="vs-edit-description" rows="2">${vs.description || ''}</textarea>
+      </div>
+    `, [
+      { label: '취소', onclick: 'closeModal()' },
+      { label: '저장', primary: true, onclick: `updateVisitSchedule('${studyId}', '${vsId}')` }
+    ]);
+  }
+  window.showEditVisitScheduleModal = showEditVisitScheduleModal;
+
+  async function updateVisitSchedule(studyId, vsId) {
+    const visitName = document.getElementById('vs-edit-visit-name')?.value?.trim();
+    const targetDay = parseInt(document.getElementById('vs-edit-target-day')?.value) || 0;
+    const windowBefore = parseInt(document.getElementById('vs-edit-window-before')?.value) || 0;
+    const windowAfter = parseInt(document.getElementById('vs-edit-window-after')?.value) || 0;
+    const isRequired = document.getElementById('vs-edit-is-required')?.checked ?? true;
+    const description = document.getElementById('vs-edit-description')?.value?.trim();
+
+    if (!visitName) {
+      showToast('방문명은 필수입니다.', 'error');
+      return;
+    }
+
+    try {
+      await api.put(`/studies/${studyId}/visit-schedules/${vsId}`, {
+        visit_name: visitName,
+        target_day: targetDay,
+        visit_window_before: windowBefore,
+        visit_window_after: windowAfter,
+        is_required: isRequired,
+        description: description || null
+      });
+      closeModal();
+      showToast('방문 일정이 수정되었습니다.', 'success');
+      loadStudyDetail(studyId);
+    } catch (error) {
+      showToast(error.error || '수정에 실패했습니다.', 'error');
+    }
+  }
+  window.updateVisitSchedule = updateVisitSchedule;
+
+  async function deleteVisitSchedule(studyId, vsId) {
+    if (!confirm('이 방문 일정을 삭제하시겠습니까?')) return;
+
+    try {
+      await api.delete(`/studies/${studyId}/visit-schedules/${vsId}`);
+      showToast('방문 일정이 삭제되었습니다.', 'success');
+      loadStudyDetail(studyId);
+    } catch (error) {
+      showToast(error.error || '삭제에 실패했습니다.', 'error');
+    }
+  }
+  window.deleteVisitSchedule = deleteVisitSchedule;
 
   // =====================================================
   // SITE CRUD

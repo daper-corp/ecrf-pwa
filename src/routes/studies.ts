@@ -561,4 +561,191 @@ studies.get('/:id/stats', requireAuth, async (c) => {
   }
 });
 
+/**
+ * GET /api/studies/:id/visit-schedules
+ * Visit Schedule 목록 조회
+ */
+studies.get('/:id/visit-schedules', requireAuth, async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+
+    const visitSchedules = await c.env.DB.prepare(`
+      SELECT * FROM visit_schedules WHERE study_id = ? ORDER BY visit_number
+    `).bind(studyId).all();
+
+    return c.json({
+      success: true,
+      data: visitSchedules.results,
+    });
+  } catch (error) {
+    console.error('Get visit schedules error:', error);
+    return c.json({ success: false, error: 'Visit Schedule 조회 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * POST /api/studies/:id/visit-schedules
+ * Visit Schedule 생성
+ */
+studies.post('/:id/visit-schedules', requireAuth, requirePermission('MANAGE_STUDY'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+    const body = await c.req.json();
+    const { visit_name, visit_number, target_day, visit_window_before, visit_window_after, is_required, description } = body;
+
+    if (!visit_name || visit_number === undefined) {
+      return c.json({ success: false, error: '방문명과 방문 번호는 필수입니다.' }, 400);
+    }
+
+    // Study 확인
+    const study = await c.env.DB.prepare(`
+      SELECT id, status FROM studies WHERE id = ?
+    `).bind(studyId).first<{ id: string; status: string }>();
+
+    if (!study) {
+      return c.json({ success: false, error: 'Study를 찾을 수 없습니다.' }, 404);
+    }
+
+    if (study.status === 'LOCKED') {
+      return c.json({ success: false, error: '잠금된 Study에는 방문 일정을 추가할 수 없습니다.' }, 400);
+    }
+
+    // 중복 방문 번호 확인
+    const existing = await c.env.DB.prepare(`
+      SELECT id FROM visit_schedules WHERE study_id = ? AND visit_number = ?
+    `).bind(studyId, visit_number).first();
+
+    if (existing) {
+      return c.json({ success: false, error: '이미 존재하는 방문 번호입니다.' }, 400);
+    }
+
+    const vsId = generateId('vs');
+    const timestamp = now();
+
+    await c.env.DB.prepare(`
+      INSERT INTO visit_schedules (
+        id, study_id, visit_name, visit_number, target_day,
+        visit_window_before, visit_window_after, is_required, description, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      vsId, studyId, visit_name, visit_number, target_day ?? 0,
+      visit_window_before ?? 0, visit_window_after ?? 0, 
+      is_required ? 1 : 0, description ?? null, timestamp
+    ).run();
+
+    const newSchedule = await c.env.DB.prepare(`
+      SELECT * FROM visit_schedules WHERE id = ?
+    `).bind(vsId).first();
+
+    return c.json({ success: true, data: newSchedule }, 201);
+  } catch (error) {
+    console.error('Create visit schedule error:', error);
+    return c.json({ success: false, error: 'Visit Schedule 생성 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * PUT /api/studies/:id/visit-schedules/:vsId
+ * Visit Schedule 수정
+ */
+studies.put('/:id/visit-schedules/:vsId', requireAuth, requirePermission('MANAGE_STUDY'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+    const vsId = c.req.param('vsId');
+    const body = await c.req.json();
+    const { visit_name, target_day, visit_window_before, visit_window_after, is_required, description } = body;
+
+    // Study 확인
+    const study = await c.env.DB.prepare(`
+      SELECT id, status FROM studies WHERE id = ?
+    `).bind(studyId).first<{ id: string; status: string }>();
+
+    if (!study) {
+      return c.json({ success: false, error: 'Study를 찾을 수 없습니다.' }, 404);
+    }
+
+    if (study.status === 'LOCKED') {
+      return c.json({ success: false, error: '잠금된 Study의 방문 일정은 수정할 수 없습니다.' }, 400);
+    }
+
+    await c.env.DB.prepare(`
+      UPDATE visit_schedules SET
+        visit_name = COALESCE(?, visit_name),
+        target_day = COALESCE(?, target_day),
+        visit_window_before = COALESCE(?, visit_window_before),
+        visit_window_after = COALESCE(?, visit_window_after),
+        is_required = COALESCE(?, is_required),
+        description = COALESCE(?, description)
+      WHERE id = ? AND study_id = ?
+    `).bind(
+      visit_name, target_day, visit_window_before, visit_window_after,
+      is_required !== undefined ? (is_required ? 1 : 0) : null, description,
+      vsId, studyId
+    ).run();
+
+    const updated = await c.env.DB.prepare(`
+      SELECT * FROM visit_schedules WHERE id = ?
+    `).bind(vsId).first();
+
+    return c.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Update visit schedule error:', error);
+    return c.json({ success: false, error: 'Visit Schedule 수정 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * DELETE /api/studies/:id/visit-schedules/:vsId
+ * Visit Schedule 삭제
+ */
+studies.delete('/:id/visit-schedules/:vsId', requireAuth, requirePermission('MANAGE_STUDY'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+    const vsId = c.req.param('vsId');
+
+    // Study 확인
+    const study = await c.env.DB.prepare(`
+      SELECT id, status FROM studies WHERE id = ?
+    `).bind(studyId).first<{ id: string; status: string }>();
+
+    if (!study) {
+      return c.json({ success: false, error: 'Study를 찾을 수 없습니다.' }, 404);
+    }
+
+    if (study.status === 'LOCKED') {
+      return c.json({ success: false, error: '잠금된 Study의 방문 일정은 삭제할 수 없습니다.' }, 400);
+    }
+
+    // 해당 Visit Schedule이 사용중인지 확인
+    const usedCount = await c.env.DB.prepare(`
+      SELECT COUNT(*) as count FROM visits WHERE visit_schedule_id = ?
+    `).bind(vsId).first<{ count: number }>();
+
+    if (usedCount && usedCount.count > 0) {
+      return c.json({ success: false, error: '이미 사용 중인 방문 일정은 삭제할 수 없습니다.' }, 400);
+    }
+
+    await c.env.DB.prepare(`
+      DELETE FROM visit_schedules WHERE id = ? AND study_id = ?
+    `).bind(vsId, studyId).run();
+
+    return c.json({ success: true, message: '방문 일정이 삭제되었습니다.' });
+  } catch (error) {
+    console.error('Delete visit schedule error:', error);
+    return c.json({ success: false, error: 'Visit Schedule 삭제 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
 export default studies;
