@@ -410,6 +410,78 @@ studies.post('/:id/lock', requireAuth, requirePermission('LOCK_DATA'), async (c)
 });
 
 /**
+ * POST /api/studies/:id/unlock
+ * Study Unlock (잠금 해제)
+ */
+studies.post('/:id/unlock', requireAuth, requirePermission('LOCK_DATA'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+    const body = await c.req.json();
+    const { reason } = body;
+
+    if (!reason || reason.trim().length < 10) {
+      return c.json({ success: false, error: '잠금 해제 사유는 최소 10자 이상 입력해야 합니다.' }, 400);
+    }
+
+    const study = await c.env.DB.prepare(`
+      SELECT * FROM studies WHERE id = ?
+    `).bind(studyId).first<Study>();
+
+    if (!study) {
+      return c.json({ success: false, error: 'Study를 찾을 수 없습니다.' }, 404);
+    }
+
+    if (study.status !== 'LOCKED') {
+      return c.json({ success: false, error: '잠금되지 않은 Study입니다.' }, 400);
+    }
+
+    const timestamp = now();
+    const previousStatus = 'ACTIVE'; // 잠금 해제 시 ACTIVE 상태로 복원
+
+    // Study 상태 변경
+    await c.env.DB.prepare(`
+      UPDATE studies SET status = ?, updated_at = ? WHERE id = ?
+    `).bind(previousStatus, timestamp, studyId).run();
+
+    // Data Lock 레코드 업데이트 (해제)
+    await c.env.DB.prepare(`
+      UPDATE data_locks 
+      SET unlocked_by = ?, unlocked_at = ?, unlock_reason = ?
+      WHERE record_id = ? AND lock_type = 'STUDY' AND unlocked_at IS NULL
+    `).bind(user.userId, timestamp, reason, studyId).run();
+
+    // Audit Log
+    const { ipAddress, userAgent } = getClientInfo(c);
+    await createAuditLog(c.env.DB, {
+      user,
+      ipAddress: ipAddress ?? undefined,
+      userAgent: userAgent ?? undefined,
+      sessionId: c.get('sessionId') ?? undefined,
+      studyId,
+    }, {
+      action: 'UNLOCK',
+      tableName: 'studies',
+      recordId: studyId,
+      fieldName: 'status',
+      oldValue: 'LOCKED',
+      newValue: previousStatus,
+      reasonForChange: reason,
+    });
+
+    return c.json({
+      success: true,
+      message: 'Study 잠금이 해제되었습니다.',
+    });
+  } catch (error) {
+    console.error('Unlock study error:', error);
+    return c.json({ success: false, error: 'Study 잠금 해제 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
  * GET /api/studies/:id/stats
  * Study 통계 조회
  */

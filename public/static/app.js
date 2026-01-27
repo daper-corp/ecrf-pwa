@@ -707,7 +707,9 @@
               <div style="display: flex; gap: 8px;">
                 ${ui.canManage() ? `
                   <button class="btn btn-secondary btn-sm" onclick="showEditStudyModal('${study.id}')"><i class="fas fa-edit"></i> 수정</button>
-                  ${study.status !== 'LOCKED' ? `<button class="btn btn-secondary btn-sm" onclick="lockStudy('${study.id}')"><i class="fas fa-lock"></i> 잠금</button>` : ''}
+                  ${study.status !== 'LOCKED' 
+                    ? `<button class="btn btn-secondary btn-sm" onclick="showLockStudyModal('${study.id}')"><i class="fas fa-lock"></i> 잠금</button>` 
+                    : `<button class="btn btn-warning btn-sm" onclick="showUnlockStudyModal('${study.id}')"><i class="fas fa-unlock"></i> 잠금해제</button>`}
                 ` : ''}
               </div>
             </div>
@@ -759,18 +761,77 @@
     }
   }
 
+  // Study 잠금 모달
+  function showLockStudyModal(studyId) {
+    showModal('Study 잠금', `
+      <div class="form-group">
+        <p style="margin-bottom: 16px; color: var(--text-secondary);">
+          <i class="fas fa-exclamation-triangle" style="color: var(--warning);"></i>
+          Study를 잠그면 모든 데이터 수정이 제한됩니다.
+        </p>
+        <label class="form-label">잠금 사유</label>
+        <textarea class="form-input" id="lock-reason" rows="3" placeholder="예: 데이터베이스 잠금 - 최종 데이터 분석 준비"></textarea>
+      </div>
+    `, [
+      { label: '취소', onclick: 'closeModal()' },
+      { label: '잠금', primary: true, onclick: `lockStudy('${studyId}')` }
+    ]);
+  }
+  window.showLockStudyModal = showLockStudyModal;
+
   async function lockStudy(studyId) {
-    if (!confirm('이 Study를 잠그시겠습니까? 잠금 후에는 데이터 수정이 제한됩니다.')) return;
+    const reason = document.getElementById('lock-reason')?.value?.trim();
     
     try {
-      await api.put(`/studies/${studyId}`, { status: 'LOCKED' });
+      await api.post(`/studies/${studyId}/lock`, { reason });
+      closeModal();
       showToast('Study가 잠금되었습니다.', 'success');
       loadStudyDetail(studyId);
     } catch (error) {
-      showToast('잠금에 실패했습니다.', 'error');
+      showToast(error.error || '잠금에 실패했습니다.', 'error');
     }
   }
   window.lockStudy = lockStudy;
+
+  // Study 잠금 해제 모달
+  function showUnlockStudyModal(studyId) {
+    showModal('Study 잠금 해제', `
+      <div class="form-group">
+        <p style="margin-bottom: 16px; color: var(--text-secondary);">
+          <i class="fas fa-info-circle" style="color: var(--primary);"></i>
+          잠금을 해제하면 데이터 수정이 다시 가능해집니다.
+        </p>
+        <label class="form-label">잠금 해제 사유 <span class="required">*</span></label>
+        <textarea class="form-input" id="unlock-reason" rows="3" placeholder="최소 10자 이상 입력해주세요.&#10;예: 데이터 검토 결과 추가 수정 필요 - CRF 데이터 오류 발견"></textarea>
+        <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+          * 21 CFR Part 11 규정에 따라 잠금 해제 사유는 감사 추적에 기록됩니다.
+        </p>
+      </div>
+    `, [
+      { label: '취소', onclick: 'closeModal()' },
+      { label: '잠금 해제', primary: true, onclick: `unlockStudy('${studyId}')` }
+    ]);
+  }
+  window.showUnlockStudyModal = showUnlockStudyModal;
+
+  async function unlockStudy(studyId) {
+    const reason = document.getElementById('unlock-reason')?.value?.trim();
+    
+    if (!reason || reason.length < 10) {
+      showToast('잠금 해제 사유는 최소 10자 이상 입력해야 합니다.', 'error');
+      return;
+    }
+    
+    try {
+      await api.post(`/studies/${studyId}/unlock`, { reason });
+      closeModal();
+      showToast('Study 잠금이 해제되었습니다.', 'success');
+      loadStudyDetail(studyId);
+    } catch (error) {
+      showToast(error.error || '잠금 해제에 실패했습니다.', 'error');
+    }
+  }
+  window.unlockStudy = unlockStudy;
 
   // =====================================================
   // SITE CRUD
