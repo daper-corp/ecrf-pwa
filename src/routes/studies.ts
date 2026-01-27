@@ -999,6 +999,15 @@ studies.post('/:id/form-definitions/:formId/fields', requireAuth, requirePermiss
       return c.json({ success: false, error: '잠금된 Study에는 필드를 추가할 수 없습니다.' }, 400);
     }
 
+    // Form Definition 존재 확인
+    const formDef = await c.env.DB.prepare(`
+      SELECT id, form_name FROM form_definitions WHERE id = ? AND study_id = ?
+    `).bind(formId, studyId).first();
+
+    if (!formDef) {
+      return c.json({ success: false, error: '해당 CRF 양식을 찾을 수 없습니다.' }, 404);
+    }
+
     // 중복 필드 코드 확인
     const existing = await c.env.DB.prepare(`
       SELECT id FROM field_definitions WHERE form_definition_id = ? AND field_code = ?
@@ -1028,9 +1037,13 @@ studies.post('/:id/form-definitions/:formId/fields', requireAuth, requirePermiss
     `).bind(fieldId).first();
 
     return c.json({ success: true, data: newField }, 201);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Create field definition error:', error);
-    return c.json({ success: false, error: 'Field Definition 생성 중 오류가 발생했습니다.' }, 500);
+    return c.json({ 
+      success: false, 
+      error: 'Field Definition 생성 중 오류가 발생했습니다.',
+      details: error?.message || String(error)
+    }, 500);
   }
 });
 
