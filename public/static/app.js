@@ -975,8 +975,10 @@
     
     switch (view) {
       case 'dashboard':
-      case 'studies':
         loadDashboard();
+        break;
+      case 'studies':
+        loadStudiesPage();
         break;
       case 'study':
         loadStudyDetail(params.studyId);
@@ -1186,12 +1188,13 @@
         </div>
       </div>
 
+      <!-- Recent Studies (최근 3개만 표시) -->
       <div class="card">
         <div class="card-header">
-          <span class="card-title">임상시험 목록</span>
-          ${ui.canManage() ? `<button class="btn btn-primary btn-sm" onclick="showNewStudyModal()"><i class="fas fa-plus"></i> 새 Study</button>` : ''}
+          <span class="card-title">최근 임상시험</span>
+          <button class="btn btn-secondary btn-sm" onclick="navigateTo('studies')">전체 보기 <i class="fas fa-arrow-right"></i></button>
         </div>
-        <div class="card-body compact" id="studies-list">
+        <div class="card-body compact" id="recent-studies-list">
           <div class="loading"><div class="spinner"></div><span>데이터를 불러오는 중...</span></div>
         </div>
       </div>
@@ -1200,14 +1203,57 @@
     try {
       const studiesResult = await api.get('/studies');
       state.studies = studiesResult.data || [];
-      renderStudiesList();
+      renderRecentStudiesList();
       loadDashboardStats();
     } catch (error) {
       console.error('Failed to load dashboard:', error);
-      ui.setHtml('#studies-list', `<div class="empty-state"><i class="fas fa-exclamation-circle" style="color: var(--danger);"></i><h3>데이터 로드 실패</h3></div>`);
+      ui.setHtml('#recent-studies-list', `<div class="empty-state"><i class="fas fa-exclamation-circle" style="color: var(--danger);"></i><h3>데이터 로드 실패</h3></div>`);
     }
   }
 
+  function renderRecentStudiesList() {
+    const container = document.getElementById('recent-studies-list');
+    if (!container) return;
+    
+    if (state.studies.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <i class="fas fa-flask"></i>
+          <h3>등록된 임상시험이 없습니다</h3>
+          <p>새로운 임상시험을 등록해 주세요.</p>
+          ${ui.canManage() ? `<button class="btn btn-primary" style="margin-top: 12px;" onclick="showNewStudyModal()"><i class="fas fa-plus"></i> 새 Study 등록</button>` : ''}
+        </div>
+      `;
+      return;
+    }
+
+    // Show only recent 3 studies
+    const recentStudies = state.studies.slice(0, 3);
+    
+    container.innerHTML = recentStudies.map(study => `
+      <div class="study-item" onclick="navigateTo('study', {studyId: '${study.id}'})">
+        <div class="study-item-header">
+          <span class="study-protocol">${sanitizeHTML(study.protocol_number)}</span>
+          ${getStatusBadge(study.status)}
+          ${study.phase ? `<span class="badge badge-draft">Phase ${study.phase}</span>` : ''}
+        </div>
+        <div class="study-title">${sanitizeHTML(study.title || '')}</div>
+        <div class="study-meta">
+          <span class="study-meta-item"><i class="fas fa-building"></i> ${sanitizeHTML(study.sponsor || '-')}</span>
+          <span class="study-meta-item"><i class="fas fa-calendar"></i> ${ui.formatDate(study.study_start_date)}</span>
+          <span class="study-meta-item"><i class="fas fa-users"></i> ${study.subject_count || 0}명</span>
+        </div>
+      </div>
+    `).join('') + (state.studies.length > 3 ? `
+      <div style="text-align: center; padding: 12px;">
+        <button class="btn btn-secondary btn-sm" onclick="navigateTo('studies')">
+          +${state.studies.length - 3}개 더 보기
+        </button>
+      </div>
+    ` : '');
+  }
+
+  // Old function kept for backward compatibility but redirects to new one
   function renderStudiesList() {
     const container = document.getElementById('studies-list');
     if (!container) return;
@@ -1217,7 +1263,7 @@
       return;
     }
 
-    // Use DataTable for studies list if more than 5 studies
+    // Use DataTable for studies list if more than 5 studies (legacy)
     if (state.studies.length > 5) {
       DataTable.create('studies-list', {
         data: state.studies,
@@ -1504,6 +1550,225 @@
       });
     }
   }
+
+  // =====================================================
+  // STUDIES PAGE (별도 페이지)
+  // =====================================================
+  async function loadStudiesPage() {
+    state.currentStudy = null;
+    state.currentSite = null;
+    state.currentSubject = null;
+    state.currentVisit = null;
+
+    const mainContent = document.getElementById('main-content');
+    if (!mainContent) return;
+
+    mainContent.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <div>
+          <h1 style="font-size: 24px; font-weight: 600; margin: 0;">임상시험 관리</h1>
+          <p style="color: var(--text-muted); margin: 4px 0 0 0;">등록된 모든 임상시험을 관리합니다.</p>
+        </div>
+        ${ui.canManage() ? `<button class="btn btn-primary" onclick="showNewStudyModal()"><i class="fas fa-plus"></i> 새 Study 등록</button>` : ''}
+      </div>
+
+      <!-- Filter & Search -->
+      <div class="card" style="margin-bottom: 20px;">
+        <div class="card-body" style="padding: 16px;">
+          <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: center;">
+            <div style="flex: 1; min-width: 200px;">
+              <input type="text" class="form-input" id="studies-search" placeholder="Protocol, 제목, 스폰서 검색..." oninput="filterStudies()">
+            </div>
+            <div style="min-width: 150px;">
+              <select class="form-input" id="studies-status-filter" onchange="filterStudies()">
+                <option value="">모든 상태</option>
+                <option value="DRAFT">Draft</option>
+                <option value="ACTIVE">Active</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="SUSPENDED">Suspended</option>
+                <option value="LOCKED">Locked</option>
+              </select>
+            </div>
+            <div style="min-width: 120px;">
+              <select class="form-input" id="studies-phase-filter" onchange="filterStudies()">
+                <option value="">모든 Phase</option>
+                <option value="1">Phase 1</option>
+                <option value="2">Phase 2</option>
+                <option value="3">Phase 3</option>
+                <option value="4">Phase 4</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Studies Grid -->
+      <div id="studies-grid" class="studies-grid">
+        <div class="loading"><div class="spinner"></div><span>임상시험 목록을 불러오는 중...</span></div>
+      </div>
+    `;
+
+    // Add grid styles if not exists
+    if (!document.getElementById('studies-grid-styles')) {
+      const style = document.createElement('style');
+      style.id = 'studies-grid-styles';
+      style.textContent = `
+        .studies-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+          gap: 20px;
+        }
+        .study-card {
+          background: #fff;
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          padding: 20px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .study-card:hover {
+          border-color: var(--primary);
+          box-shadow: 0 4px 12px rgba(79, 70, 229, 0.1);
+          transform: translateY(-2px);
+        }
+        .study-card-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          margin-bottom: 12px;
+        }
+        .study-card-protocol {
+          font-size: 18px;
+          font-weight: 600;
+          color: var(--primary);
+        }
+        .study-card-title {
+          font-size: 14px;
+          color: var(--text-secondary);
+          margin-bottom: 16px;
+          line-height: 1.4;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        .study-card-stats {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 12px;
+          padding-top: 16px;
+          border-top: 1px solid var(--border-light);
+        }
+        .study-card-stat {
+          text-align: center;
+        }
+        .study-card-stat-value {
+          font-size: 20px;
+          font-weight: 600;
+          color: var(--text-primary);
+        }
+        .study-card-stat-label {
+          font-size: 11px;
+          color: var(--text-muted);
+          text-transform: uppercase;
+        }
+        .study-card-footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-top: 16px;
+          padding-top: 12px;
+          border-top: 1px solid var(--border-light);
+          font-size: 12px;
+          color: var(--text-muted);
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    try {
+      const studiesResult = await api.get('/studies');
+      state.studies = studiesResult.data || [];
+      renderStudiesGrid();
+    } catch (error) {
+      console.error('Failed to load studies:', error);
+      document.getElementById('studies-grid').innerHTML = `
+        <div class="empty-state" style="grid-column: 1 / -1;">
+          <i class="fas fa-exclamation-circle" style="color: var(--danger);"></i>
+          <h3>데이터 로드 실패</h3>
+          <button class="btn btn-primary" style="margin-top: 16px;" onclick="loadStudiesPage()">다시 시도</button>
+        </div>
+      `;
+    }
+  }
+
+  function renderStudiesGrid() {
+    const container = document.getElementById('studies-grid');
+    if (!container) return;
+
+    const searchQuery = document.getElementById('studies-search')?.value?.toLowerCase() || '';
+    const statusFilter = document.getElementById('studies-status-filter')?.value || '';
+    const phaseFilter = document.getElementById('studies-phase-filter')?.value || '';
+
+    let filteredStudies = state.studies.filter(study => {
+      const matchesSearch = !searchQuery || 
+        study.protocol_number?.toLowerCase().includes(searchQuery) ||
+        study.title?.toLowerCase().includes(searchQuery) ||
+        study.sponsor?.toLowerCase().includes(searchQuery);
+      const matchesStatus = !statusFilter || study.status === statusFilter;
+      const matchesPhase = !phaseFilter || study.phase === phaseFilter;
+      return matchesSearch && matchesStatus && matchesPhase;
+    });
+
+    if (filteredStudies.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state" style="grid-column: 1 / -1; padding: 60px 20px;">
+          <i class="fas fa-flask" style="font-size: 48px; opacity: 0.3;"></i>
+          <h3>${state.studies.length === 0 ? '등록된 임상시험이 없습니다' : '검색 결과가 없습니다'}</h3>
+          <p style="color: var(--text-muted);">${state.studies.length === 0 ? '새로운 임상시험을 등록해 주세요.' : '다른 검색어를 시도해 보세요.'}</p>
+          ${state.studies.length === 0 && ui.canManage() ? `<button class="btn btn-primary" style="margin-top: 16px;" onclick="showNewStudyModal()"><i class="fas fa-plus"></i> 새 Study 등록</button>` : ''}
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = filteredStudies.map(study => `
+      <div class="study-card" onclick="navigateTo('study', {studyId: '${study.id}'})">
+        <div class="study-card-header">
+          <div>
+            <div class="study-card-protocol">${sanitizeHTML(study.protocol_number)}</div>
+            ${study.phase ? `<span class="badge badge-draft" style="margin-top: 4px;">Phase ${study.phase}</span>` : ''}
+          </div>
+          ${getStatusBadge(study.status)}
+        </div>
+        <div class="study-card-title">${sanitizeHTML(study.title || '제목 없음')}</div>
+        <div class="study-card-stats">
+          <div class="study-card-stat">
+            <div class="study-card-stat-value">${study.site_count || 0}</div>
+            <div class="study-card-stat-label">Sites</div>
+          </div>
+          <div class="study-card-stat">
+            <div class="study-card-stat-value">${study.subject_count || 0}</div>
+            <div class="study-card-stat-label">Subjects</div>
+          </div>
+          <div class="study-card-stat">
+            <div class="study-card-stat-value">${study.open_query_count || 0}</div>
+            <div class="study-card-stat-label">Queries</div>
+          </div>
+        </div>
+        <div class="study-card-footer">
+          <span><i class="fas fa-building"></i> ${sanitizeHTML(study.sponsor || '-')}</span>
+          <span><i class="fas fa-calendar"></i> ${ui.formatDate(study.study_start_date) || '-'}</span>
+        </div>
+      </div>
+    `).join('');
+  }
+  window.renderStudiesGrid = renderStudiesGrid;
+
+  function filterStudies() {
+    renderStudiesGrid();
+  }
+  window.filterStudies = filterStudies;
 
   // =====================================================
   // STUDY CRUD
