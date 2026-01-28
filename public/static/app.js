@@ -3807,7 +3807,24 @@
             <div id="subjects-table-${siteId}"></div>
           </div>
         </div>
+
+        ${ui.canManage() ? `
+        <div class="card" id="site-users-section">
+          <div class="card-header">
+            <span class="card-title"><i class="fas fa-user-md"></i> Site 담당자 관리 (PI/CRC)</span>
+            <button class="btn btn-primary btn-sm" onclick="showAssignSiteUserModal('${site.id}')"><i class="fas fa-user-plus"></i> 담당자 추가</button>
+          </div>
+          <div class="card-body compact" id="site-users-list">
+            <div class="loading"><div class="spinner"></div><span>담당자 목록 로딩 중...</span></div>
+          </div>
+        </div>
+        ` : ''}
       `;
+
+      // Site 담당자 목록 로드
+      if (ui.canManage()) {
+        loadSiteUsers(siteId);
+      }
 
       // Initialize DataTable for subjects if there are subjects
       if (subjects.length > 0) {
@@ -3848,6 +3865,162 @@
       mainContent.innerHTML = `<div class="empty-state" style="margin-top: 40px;"><i class="fas fa-exclamation-circle" style="color: var(--danger);"></i><h3>Site 로드 실패</h3><button class="btn btn-primary" style="margin-top: 16px;" onclick="navigateTo('dashboard')">대시보드로 돌아가기</button></div>`;
     }
   }
+
+  // =====================================================
+  // Site 사용자 관리 (PI/SUB_INV/CRC 할당)
+  // =====================================================
+
+  async function loadSiteUsers(siteId) {
+    const container = document.getElementById('site-users-list');
+    if (!container) return;
+
+    try {
+      const result = await api.get(`/sites/${siteId}/users`);
+      const users = result.data || [];
+
+      if (users.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state" style="padding: 32px;">
+            <i class="fas fa-user-md" style="font-size: 32px; color: var(--text-muted);"></i>
+            <h3 style="margin-top: 12px;">할당된 담당자가 없습니다</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 16px;">PI, Sub-Investigator, CRC를 이 Site에 할당해 주세요.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>담당자</th>
+              <th>역할</th>
+              <th>주담당</th>
+              <th>할당일</th>
+              <th>상태</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${users.map(u => `
+              <tr>
+                <td>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <div class="user-avatar" style="width: 32px; height: 32px; font-size: 12px;">${ui.getInitials(u.name)}</div>
+                    <div>
+                      <div style="font-weight: 500;">${u.name}</div>
+                      <div style="font-size: 12px; color: var(--text-muted);">${u.email}</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="badge badge-${u.role === 'PI' ? 'active' : u.role === 'SUB_INV' ? 'info' : 'draft'}">${ui.getRoleName(u.role)}</span></td>
+                <td>${u.is_primary ? '<i class="fas fa-star" style="color: var(--warning);"></i>' : '-'}</td>
+                <td>${ui.formatDate(u.assigned_at)}</td>
+                <td>${u.user_status === 'ACTIVE' ? '<span class="badge badge-active">활성</span>' : '<span class="badge badge-inactive">비활성</span>'}</td>
+                <td>
+                  <button class="btn btn-secondary btn-sm" onclick="toggleSiteUserPrimary('${siteId}', '${u.id}', ${!u.is_primary})" style="padding: 4px 8px;" title="${u.is_primary ? '주담당 해제' : '주담당 지정'}">
+                    <i class="fas fa-star${u.is_primary ? '' : '-half-alt'}"></i>
+                  </button>
+                  <button class="btn btn-secondary btn-sm" onclick="removeSiteUser('${siteId}', '${u.user_id}', '${u.name}')" style="padding: 4px 8px;" title="할당 해제">
+                    <i class="fas fa-user-minus"></i>
+                  </button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    } catch (error) {
+      container.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-circle" style="color: var(--danger);"></i><p>담당자 목록을 불러올 수 없습니다.</p></div>`;
+    }
+  }
+  window.loadSiteUsers = loadSiteUsers;
+
+  async function showAssignSiteUserModal(siteId) {
+    try {
+      const result = await api.get(`/sites/${siteId}/assignable-users`);
+      const users = result.data || [];
+
+      if (users.length === 0) {
+        showToast('할당 가능한 PI/CRC 사용자가 없습니다. 먼저 사용자를 생성해 주세요.', 'warning');
+        return;
+      }
+
+      showModal('Site 담당자 추가', `
+        <div class="form-group">
+          <label class="form-label">사용자 선택 <span class="required">*</span></label>
+          <select class="form-input" id="assign-site-user-id">
+            <option value="">-- 사용자 선택 --</option>
+            ${users.map(u => `<option value="${u.id}">${u.name} (${u.email}) - ${ui.getRoleName(u.role)}</option>`).join('')}
+          </select>
+          <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+            <i class="fas fa-info-circle"></i> PI, Sub-Investigator, CRC 역할의 사용자만 Site에 할당할 수 있습니다.
+          </p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">
+            <input type="checkbox" id="assign-site-is-primary" style="margin-right: 8px;">
+            주담당자로 지정 (PI의 경우 권장)
+          </label>
+        </div>
+      `, [
+        { label: '취소', onclick: 'closeModal()' },
+        { label: '할당', primary: true, onclick: `assignSiteUser('${siteId}')` }
+      ]);
+    } catch (error) {
+      showToast('할당 가능한 사용자 목록을 불러올 수 없습니다.', 'error');
+    }
+  }
+  window.showAssignSiteUserModal = showAssignSiteUserModal;
+
+  async function assignSiteUser(siteId) {
+    const userId = document.getElementById('assign-site-user-id')?.value;
+    const isPrimary = document.getElementById('assign-site-is-primary')?.checked;
+
+    if (!userId) {
+      showToast('사용자를 선택해 주세요.', 'warning');
+      return;
+    }
+
+    try {
+      await api.post(`/sites/${siteId}/users`, {
+        user_id: userId,
+        is_primary: isPrimary
+      });
+      closeModal();
+      showToast('담당자가 할당되었습니다.', 'success');
+      loadSiteUsers(siteId);
+    } catch (error) {
+      showToast(error.message || '담당자 할당에 실패했습니다.', 'error');
+    }
+  }
+  window.assignSiteUser = assignSiteUser;
+
+  async function toggleSiteUserPrimary(siteId, siteUserId, isPrimary) {
+    try {
+      await api.put(`/sites/${siteId}/users/${siteUserId}`, { is_primary: isPrimary });
+      showToast(isPrimary ? '주담당자로 지정되었습니다.' : '주담당 지정이 해제되었습니다.', 'success');
+      loadSiteUsers(siteId);
+    } catch (error) {
+      showToast(error.message || '변경에 실패했습니다.', 'error');
+    }
+  }
+  window.toggleSiteUserPrimary = toggleSiteUserPrimary;
+
+  async function removeSiteUser(siteId, userId, userName) {
+    if (!confirm(`${userName}님을 이 Site에서 제외하시겠습니까?\n\n제외 후에는 해당 사용자가 이 Site의 데이터에 접근할 수 없습니다.`)) {
+      return;
+    }
+
+    try {
+      await api.delete(`/sites/${siteId}/users/${userId}`);
+      showToast('담당자 할당이 해제되었습니다.', 'success');
+      loadSiteUsers(siteId);
+    } catch (error) {
+      showToast(error.message || '담당자 할당 해제에 실패했습니다.', 'error');
+    }
+  }
+  window.removeSiteUser = removeSiteUser;
 
   function showEditSiteModal(siteId) {
     const site = state.currentSite;

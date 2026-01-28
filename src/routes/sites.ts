@@ -297,9 +297,9 @@ sites.put('/:id', requireAuth, requirePermission('MANAGE_SITE'), async (c) => {
 
 /**
  * POST /api/sites/:id/users
- * Site에 사용자 할당
+ * Site에 사용자 할당 (PI, SUB_INV, CRC)
  */
-sites.post('/:id/users', requireAuth, requirePermission('MANAGE_SITE'), async (c) => {
+sites.post('/:id/users', requireAuth, requirePermission('ASSIGN_SITE_USERS'), async (c) => {
   try {
     const user = getAuthUser(c);
     if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
@@ -323,11 +323,23 @@ sites.post('/:id/users', requireAuth, requirePermission('MANAGE_SITE'), async (c
 
     // 사용자 확인
     const targetUser = await c.env.DB.prepare(`
-      SELECT id, name, role FROM users WHERE id = ?
-    `).bind(user_id).first();
+      SELECT id, name, email, role, status FROM users WHERE id = ?
+    `).bind(user_id).first<{ id: string; name: string; email: string; role: string; status: string }>();
 
     if (!targetUser) {
       return c.json({ success: false, error: '사용자를 찾을 수 없습니다.' }, 404);
+    }
+
+    if (targetUser.status !== 'ACTIVE') {
+      return c.json({ success: false, error: '비활성 상태의 사용자는 할당할 수 없습니다.' }, 400);
+    }
+
+    // PI, SUB_INV, CRC만 Site에 할당 가능 (DM/CRA는 Study에 할당)
+    if (!['PI', 'SUB_INV', 'CRC'].includes(targetUser.role)) {
+      return c.json({ 
+        success: false, 
+        error: 'Site에는 PI, Sub-Investigator, CRC 역할의 사용자만 할당할 수 있습니다. DM/CRA는 Study에 할당해주세요.' 
+      }, 400);
     }
 
     // 이미 할당되어 있는지 확인
@@ -374,10 +386,140 @@ sites.post('/:id/users', requireAuth, requirePermission('MANAGE_SITE'), async (c
 });
 
 /**
+ * GET /api/sites/:id/users
+ * Site에 할당된 사용자 목록 조회
+ */
+sites.get('/:id/users', requireAuth, async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const siteId = c.req.param('id');
+
+    const site = await c.env.DB.prepare(`
+      SELECT * FROM sites WHERE id = ?
+    `).bind(siteId).first<Site>();
+
+    if (!site) {
+      return c.json({ success: false, error: 'Site를 찾을 수 없습니다.' }, 404);
+    }
+
+    // 접근 권한 확인
+    const hasAccess = await checkStudyAccess(c.env.DB, user.userId, user.role, site.study_id);
+    if (!hasAccess) {
+      return c.json({ success: false, error: '해당 Site에 접근 권한이 없습니다.' }, 403);
+    }
+
+    const siteUsers = await c.env.DB.prepare(`
+      SELECT 
+        su.id, su.site_id, su.user_id, su.is_primary, su.assigned_at,
+        u.email, u.name, u.role, u.status as user_status
+      FROM site_users su
+      JOIN users u ON su.user_id = u.id
+      WHERE su.site_id = ?
+      ORDER BY su.is_primary DESC, u.role, u.name
+    `).bind(siteId).all();
+
+    return c.json({
+      success: true,
+      data: siteUsers.results,
+    });
+  } catch (error) {
+    console.error('Get site users error:', error);
+    return c.json({ success: false, error: 'Site 사용자 목록 조회 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * GET /api/sites/:id/assignable-users
+ * Site에 할당 가능한 사용자 목록 조회 (PI, SUB_INV, CRC 역할만)
+ */
+sites.get('/:id/assignable-users', requireAuth, requirePermission('ASSIGN_SITE_USERS'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const siteId = c.req.param('id');
+
+    // PI, SUB_INV, CRC 역할의 활성 사용자 중 아직 해당 Site에 할당되지 않은 사용자
+    const users = await c.env.DB.prepare(`
+      SELECT id, email, name, role
+      FROM users
+      WHERE role IN ('PI', 'SUB_INV', 'CRC')
+        AND status = 'ACTIVE'
+        AND id NOT IN (
+          SELECT user_id FROM site_users WHERE site_id = ?
+        )
+      ORDER BY role, name
+    `).bind(siteId).all();
+
+    return c.json({
+      success: true,
+      data: users.results,
+    });
+  } catch (error) {
+    console.error('Get assignable users error:', error);
+    return c.json({ success: false, error: '할당 가능한 사용자 목록 조회 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * PUT /api/sites/:id/users/:siteUserId
+ * Site 사용자 정보 수정 (주담당 여부 등)
+ */
+sites.put('/:id/users/:siteUserId', requireAuth, requirePermission('ASSIGN_SITE_USERS'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const siteId = c.req.param('id');
+    const siteUserId = c.req.param('siteUserId');
+    const body = await c.req.json();
+    const { is_primary } = body;
+
+    const site = await c.env.DB.prepare(`
+      SELECT * FROM sites WHERE id = ?
+    `).bind(siteId).first<Site>();
+
+    if (!site) {
+      return c.json({ success: false, error: 'Site를 찾을 수 없습니다.' }, 404);
+    }
+
+    await c.env.DB.prepare(`
+      UPDATE site_users SET is_primary = ? WHERE id = ? AND site_id = ?
+    `).bind(is_primary ? 1 : 0, siteUserId, siteId).run();
+
+    // Audit Log
+    const { ipAddress, userAgent } = getClientInfo(c);
+    await createAuditLog(c.env.DB, {
+      user,
+      ipAddress: ipAddress ?? undefined,
+      userAgent: userAgent ?? undefined,
+      sessionId: c.get('sessionId') ?? undefined,
+      studyId: site.study_id,
+      siteId,
+    }, {
+      action: 'UPDATE',
+      tableName: 'site_users',
+      recordId: siteUserId,
+      newValue: JSON.stringify({ is_primary }),
+    });
+
+    return c.json({
+      success: true,
+      message: '사용자 정보가 수정되었습니다.',
+    });
+  } catch (error) {
+    console.error('Update site user error:', error);
+    return c.json({ success: false, error: '사용자 정보 수정 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
  * DELETE /api/sites/:id/users/:userId
  * Site에서 사용자 제거
  */
-sites.delete('/:id/users/:userId', requireAuth, requirePermission('MANAGE_SITE'), async (c) => {
+sites.delete('/:id/users/:userId', requireAuth, requirePermission('ASSIGN_SITE_USERS'), async (c) => {
   try {
     const user = getAuthUser(c);
     if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
