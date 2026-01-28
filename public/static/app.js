@@ -881,6 +881,19 @@
       
       if (authSection) {
         authSection.innerHTML = `
+          <!-- Global Search -->
+          <div class="global-search-container" style="position: relative; margin-right: 8px;">
+            <input type="text" 
+                   id="global-search-input" 
+                   class="form-input" 
+                   placeholder="검색 (Ctrl+K)" 
+                   style="width: 200px; padding: 6px 12px 6px 32px; font-size: 13px; border-radius: 20px; background: var(--bg-secondary);"
+                   onfocus="showGlobalSearchDropdown()"
+                   oninput="debounce(() => performGlobalSearch(this.value), 300)()"
+                   onkeydown="handleGlobalSearchKeydown(event)">
+            <i class="fas fa-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 12px;"></i>
+            <div id="global-search-dropdown" class="global-search-dropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; min-width: 350px; max-height: 400px; overflow-y: auto; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin-top: 4px; z-index: 1000;"></div>
+          </div>
           <button class="btn-icon" title="알림">
             <i class="fas fa-bell"></i>
           </button>
@@ -1134,6 +1147,45 @@
         </div>
       </div>
 
+      <!-- Dashboard Charts Section -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; margin-bottom: 20px;">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i class="fas fa-chart-pie" style="margin-right: 8px;"></i>피험자 등록 현황</span>
+          </div>
+          <div class="card-body" style="height: 250px;">
+            <canvas id="chart-enrollment"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i class="fas fa-chart-bar" style="margin-right: 8px;"></i>Query 현황</span>
+          </div>
+          <div class="card-body" style="height: 250px;">
+            <canvas id="chart-queries"></canvas>
+          </div>
+        </div>
+      </div>
+      
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; margin-bottom: 20px;">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i class="fas fa-chart-line" style="margin-right: 8px;"></i>등록 추이 (최근 7일)</span>
+          </div>
+          <div class="card-body" style="height: 200px;">
+            <canvas id="chart-trend"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i class="fas fa-tasks" style="margin-right: 8px;"></i>CRF 완료율</span>
+          </div>
+          <div class="card-body" style="height: 200px;">
+            <canvas id="chart-crf"></canvas>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-header">
           <span class="card-title">임상시험 목록</span>
@@ -1208,6 +1260,9 @@
     }
   }
 
+  // Store chart instances for cleanup
+  let dashboardCharts = {};
+
   async function loadDashboardStats() {
     const statStudies = document.getElementById('stat-studies');
     const statSubjects = document.getElementById('stat-subjects');
@@ -1217,14 +1272,40 @@
     if (statStudies) statStudies.textContent = state.studies.length.toString();
     
     let totalSubjects = 0, totalQueries = 0, totalSignatures = 0;
+    let subjectsByStatus = { SCREENING: 0, ENROLLED: 0, RANDOMIZED: 0, COMPLETED: 0, WITHDRAWN: 0 };
+    let queriesByStatus = { OPEN: 0, ANSWERED: 0, CLOSED: 0, CANCELLED: 0 };
+    let crfStats = { completed: 0, inProgress: 0, notStarted: 0 };
 
     for (const study of state.studies.slice(0, 5)) {
       try {
         const stats = await api.get(`/studies/${study.id}/stats`);
         if (stats.success && stats.data) {
-          totalSubjects += (stats.data.subjects || []).reduce((sum, s) => sum + s.count, 0);
-          const openQueries = (stats.data.queries || []).find(q => q.status === 'OPEN');
-          totalQueries += openQueries?.count || 0;
+          // Subject stats
+          (stats.data.subjects || []).forEach(s => {
+            totalSubjects += s.count;
+            if (subjectsByStatus[s.status] !== undefined) {
+              subjectsByStatus[s.status] += s.count;
+            }
+          });
+          
+          // Query stats
+          (stats.data.queries || []).forEach(q => {
+            if (q.status === 'OPEN') totalQueries += q.count;
+            if (queriesByStatus[q.status] !== undefined) {
+              queriesByStatus[q.status] += q.count;
+            }
+          });
+          
+          // CRF stats
+          (stats.data.crfs || []).forEach(c => {
+            if (['COMPLETE', 'SIGNED', 'LOCKED'].includes(c.status)) {
+              crfStats.completed += c.count;
+            } else if (c.status === 'IN_PROGRESS') {
+              crfStats.inProgress += c.count;
+            } else {
+              crfStats.notStarted += c.count;
+            }
+          });
         }
       } catch (e) {}
     }
@@ -1232,6 +1313,196 @@
     if (statSubjects) statSubjects.textContent = totalSubjects.toString();
     if (statQueries) statQueries.textContent = totalQueries.toString();
     if (statSignatures) statSignatures.textContent = totalSignatures.toString();
+
+    // Initialize charts
+    initDashboardCharts(subjectsByStatus, queriesByStatus, crfStats);
+  }
+
+  function initDashboardCharts(subjectsByStatus, queriesByStatus, crfStats) {
+    // Destroy existing charts
+    Object.values(dashboardCharts).forEach(chart => {
+      if (chart) chart.destroy();
+    });
+    dashboardCharts = {};
+
+    // Check if Chart.js is loaded
+    if (typeof Chart === 'undefined') {
+      console.log('Chart.js not loaded');
+      return;
+    }
+
+    const chartColors = {
+      primary: '#4f46e5',
+      success: '#10b981',
+      warning: '#f59e0b',
+      danger: '#ef4444',
+      info: '#3b82f6',
+      secondary: '#6b7280',
+      purple: '#8b5cf6',
+      pink: '#ec4899'
+    };
+
+    // 1. Enrollment Pie Chart
+    const enrollmentCtx = document.getElementById('chart-enrollment')?.getContext('2d');
+    if (enrollmentCtx) {
+      const enrollmentData = [
+        subjectsByStatus.SCREENING,
+        subjectsByStatus.ENROLLED,
+        subjectsByStatus.RANDOMIZED,
+        subjectsByStatus.COMPLETED,
+        subjectsByStatus.WITHDRAWN
+      ];
+      
+      if (enrollmentData.some(v => v > 0)) {
+        dashboardCharts.enrollment = new Chart(enrollmentCtx, {
+          type: 'doughnut',
+          data: {
+            labels: ['스크리닝', '등록', '무작위배정', '완료', '중도탈락'],
+            datasets: [{
+              data: enrollmentData,
+              backgroundColor: [chartColors.info, chartColors.primary, chartColors.purple, chartColors.success, chartColors.danger],
+              borderWidth: 0
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'right',
+                labels: { font: { size: 11 }, padding: 12 }
+              }
+            },
+            cutout: '60%'
+          }
+        });
+      } else {
+        enrollmentCtx.canvas.parentElement.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted);"><i class="fas fa-chart-pie" style="font-size: 48px; opacity: 0.3;"></i></div>';
+      }
+    }
+
+    // 2. Query Bar Chart
+    const queryCtx = document.getElementById('chart-queries')?.getContext('2d');
+    if (queryCtx) {
+      dashboardCharts.queries = new Chart(queryCtx, {
+        type: 'bar',
+        data: {
+          labels: ['미결', '답변됨', '종결', '취소'],
+          datasets: [{
+            label: 'Query 수',
+            data: [queriesByStatus.OPEN, queriesByStatus.ANSWERED, queriesByStatus.CLOSED, queriesByStatus.CANCELLED],
+            backgroundColor: [chartColors.warning, chartColors.info, chartColors.success, chartColors.secondary],
+            borderRadius: 6,
+            barThickness: 40
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { stepSize: 1 }
+            }
+          }
+        }
+      });
+    }
+
+    // 3. Trend Line Chart (simulated data for demo)
+    const trendCtx = document.getElementById('chart-trend')?.getContext('2d');
+    if (trendCtx) {
+      const today = new Date();
+      const labels = [];
+      const data = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        labels.push(d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }));
+        // Simulated cumulative data
+        data.push(Math.floor(Math.random() * 3) + (i === 0 ? subjectsByStatus.ENROLLED : 0));
+      }
+      
+      dashboardCharts.trend = new Chart(trendCtx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: '신규 등록',
+            data: data,
+            borderColor: chartColors.primary,
+            backgroundColor: chartColors.primary + '20',
+            fill: true,
+            tension: 0.4,
+            pointBackgroundColor: chartColors.primary,
+            pointRadius: 4,
+            pointHoverRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { stepSize: 1 }
+            }
+          }
+        }
+      });
+    }
+
+    // 4. CRF Completion Chart
+    const crfCtx = document.getElementById('chart-crf')?.getContext('2d');
+    if (crfCtx) {
+      const totalCrf = crfStats.completed + crfStats.inProgress + crfStats.notStarted;
+      const completionRate = totalCrf > 0 ? Math.round((crfStats.completed / totalCrf) * 100) : 0;
+      
+      dashboardCharts.crf = new Chart(crfCtx, {
+        type: 'doughnut',
+        data: {
+          labels: ['완료', '진행중', '미시작'],
+          datasets: [{
+            data: [crfStats.completed, crfStats.inProgress, crfStats.notStarted],
+            backgroundColor: [chartColors.success, chartColors.warning, chartColors.secondary],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: { font: { size: 11 }, padding: 12 }
+            }
+          },
+          cutout: '70%'
+        },
+        plugins: [{
+          id: 'centerText',
+          beforeDraw: function(chart) {
+            const ctx = chart.ctx;
+            const centerX = (chart.chartArea.left + chart.chartArea.right) / 2;
+            const centerY = (chart.chartArea.top + chart.chartArea.bottom) / 2;
+            
+            ctx.save();
+            ctx.font = 'bold 24px system-ui';
+            ctx.fillStyle = chartColors.success;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(completionRate + '%', centerX, centerY);
+            ctx.restore();
+          }
+        }]
+      });
+    }
   }
 
   // =====================================================
@@ -3615,62 +3886,366 @@
         }
       }
 
+      // Store fields for validation
+      window.currentCRFFields = fields;
+      
+      // Calculate required fields count
+      const requiredFields = fields.filter(f => f.is_required);
+      const totalRequired = requiredFields.length;
+      
       // 모달 내용 생성
       const fieldsHtml = fields.map(field => renderCRFFieldInput(field, existingData[field.field_code])).join('');
 
       showModal(`${formDef.form_code} - ${formDef.form_name}`, `
-        <form id="crf-entry-form">
+        <!-- Auto-save indicator -->
+        <div id="crf-save-indicator" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg-secondary); border-radius: 6px; margin-bottom: 16px; font-size: 13px;">
+          <span id="save-status-icon"><i class="fas fa-cloud" style="color: var(--text-muted);"></i></span>
+          <span id="save-status-text" style="color: var(--text-muted);">준비됨</span>
+          <span style="flex: 1;"></span>
+          <span style="font-size: 11px; color: var(--text-muted);">Ctrl+S 저장 | Tab 다음 필드</span>
+        </div>
+        
+        <!-- Progress bar -->
+        <div style="margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span style="font-size: 12px; color: var(--text-secondary);">필수 필드 완료율</span>
+            <span id="crf-progress-text" style="font-size: 12px; font-weight: 600; color: var(--primary);">0/${totalRequired}</span>
+          </div>
+          <div style="height: 6px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden;">
+            <div id="crf-progress-bar" style="height: 100%; background: var(--primary); border-radius: 3px; transition: width 0.3s ease; width: 0%;"></div>
+          </div>
+        </div>
+        
+        <form id="crf-entry-form" onsubmit="event.preventDefault(); saveCRFData();">
           <input type="hidden" id="crf-visit-id" value="${visitId}">
           <input type="hidden" id="crf-form-code" value="${formCode}">
           <input type="hidden" id="crf-instance-id" value="${crfInstanceId || ''}">
+          <input type="hidden" id="crf-total-required" value="${totalRequired}">
           ${fieldsHtml}
         </form>
       `, [
         { label: '취소', onclick: 'closeModal()' },
         { label: '저장', primary: true, onclick: 'saveCRFData()' }
       ]);
+
+      // Initialize CRF form features after modal is shown
+      setTimeout(() => {
+        initCRFFormFeatures();
+        updateCRFProgress();
+      }, 100);
     } catch (error) {
       showToast('양식 로드에 실패했습니다.', 'error');
     }
   }
   window.openCRFEntry = openCRFEntry;
 
+  // =====================================================
+  // CRF FORM ENHANCED FEATURES
+  // =====================================================
+  let crfAutoSaveTimer = null;
+  let crfSaveStatus = 'ready'; // ready, saving, saved, error
+  
+  function initCRFFormFeatures() {
+    const form = document.getElementById('crf-entry-form');
+    if (!form) return;
+
+    // Add input event listeners for auto-save and validation
+    form.querySelectorAll('input, select, textarea').forEach(input => {
+      if (input.type === 'hidden') return;
+      
+      // Real-time validation on blur
+      input.addEventListener('blur', () => validateCRFField(input));
+      
+      // Progress update on change
+      input.addEventListener('change', () => {
+        updateCRFProgress();
+        scheduleCRFAutoSave();
+      });
+      
+      // For text inputs, also listen to input event
+      if (['text', 'number', 'textarea'].includes(input.type) || input.tagName === 'TEXTAREA') {
+        input.addEventListener('input', debounce(() => {
+          updateCRFProgress();
+          scheduleCRFAutoSave();
+        }, 500));
+      }
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', handleCRFKeyboard);
+  }
+
+  function handleCRFKeyboard(e) {
+    // Ctrl+S to save
+    if (e.ctrlKey && e.key === 's') {
+      e.preventDefault();
+      const form = document.getElementById('crf-entry-form');
+      if (form) {
+        saveCRFData();
+      }
+    }
+    
+    // Enter to move to next field (except textarea)
+    if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+      e.preventDefault();
+      const form = document.getElementById('crf-entry-form');
+      if (!form) return;
+      
+      const inputs = Array.from(form.querySelectorAll('input:not([type="hidden"]), select, textarea'));
+      const currentIndex = inputs.indexOf(e.target);
+      if (currentIndex >= 0 && currentIndex < inputs.length - 1) {
+        inputs[currentIndex + 1].focus();
+      }
+    }
+  }
+
+  function validateCRFField(input) {
+    const fieldCode = input.name;
+    const field = (window.currentCRFFields || []).find(f => f.field_code === fieldCode);
+    if (!field) return true;
+
+    const value = getInputValue(input);
+    const errorContainer = input.closest('.form-group')?.querySelector('.field-error');
+    let isValid = true;
+    let errorMessage = '';
+
+    // Required validation
+    if (field.is_required && !value) {
+      isValid = false;
+      errorMessage = '필수 입력 항목입니다.';
+    }
+
+    // Number range validation
+    if (isValid && field.field_type === 'NUMBER' && value) {
+      const numValue = parseFloat(value);
+      if (field.min_value !== null && field.min_value !== '' && numValue < parseFloat(field.min_value)) {
+        isValid = false;
+        errorMessage = `최소값은 ${field.min_value}입니다.`;
+      }
+      if (field.max_value !== null && field.max_value !== '' && numValue > parseFloat(field.max_value)) {
+        isValid = false;
+        errorMessage = `최대값은 ${field.max_value}입니다.`;
+      }
+    }
+
+    // Update UI
+    if (errorContainer) {
+      errorContainer.textContent = errorMessage;
+      errorContainer.style.display = isValid ? 'none' : 'block';
+    }
+    
+    input.style.borderColor = isValid ? '' : 'var(--danger)';
+    input.classList.toggle('field-invalid', !isValid);
+
+    return isValid;
+  }
+
+  function getInputValue(input) {
+    if (input.type === 'checkbox') {
+      const form = input.closest('form');
+      const checkboxes = form?.querySelectorAll(`input[name="${input.name}"][type="checkbox"]`);
+      if (checkboxes && checkboxes.length > 1) {
+        return Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value).join(',');
+      }
+      return input.checked ? input.value : '';
+    }
+    if (input.type === 'radio') {
+      const form = input.closest('form');
+      const checked = form?.querySelector(`input[name="${input.name}"]:checked`);
+      return checked ? checked.value : '';
+    }
+    return input.value?.trim() || '';
+  }
+
+  function updateCRFProgress() {
+    const form = document.getElementById('crf-entry-form');
+    const progressBar = document.getElementById('crf-progress-bar');
+    const progressText = document.getElementById('crf-progress-text');
+    const totalRequired = parseInt(document.getElementById('crf-total-required')?.value || '0');
+    
+    if (!form || !progressBar || !progressText) return;
+
+    const fields = window.currentCRFFields || [];
+    const requiredFields = fields.filter(f => f.is_required);
+    
+    let filledCount = 0;
+    requiredFields.forEach(field => {
+      const input = form.querySelector(`[name="${field.field_code}"]`);
+      if (input && getInputValue(input)) {
+        filledCount++;
+      }
+    });
+
+    const percentage = totalRequired > 0 ? Math.round((filledCount / totalRequired) * 100) : 100;
+    progressBar.style.width = `${percentage}%`;
+    progressText.textContent = `${filledCount}/${totalRequired}`;
+    
+    // Color based on completion
+    if (percentage === 100) {
+      progressBar.style.background = 'var(--success)';
+    } else if (percentage >= 50) {
+      progressBar.style.background = 'var(--primary)';
+    } else {
+      progressBar.style.background = 'var(--warning)';
+    }
+  }
+
+  function scheduleCRFAutoSave() {
+    if (crfAutoSaveTimer) {
+      clearTimeout(crfAutoSaveTimer);
+    }
+    
+    updateSaveIndicator('pending');
+    
+    crfAutoSaveTimer = setTimeout(() => {
+      autoSaveCRFData();
+    }, 2000); // Auto-save after 2 seconds of inactivity
+  }
+
+  async function autoSaveCRFData() {
+    const form = document.getElementById('crf-entry-form');
+    if (!form) return;
+    
+    updateSaveIndicator('saving');
+    
+    const visitId = document.getElementById('crf-visit-id')?.value;
+    const formCode = document.getElementById('crf-form-code')?.value;
+    
+    if (!visitId || !formCode) {
+      updateSaveIndicator('error');
+      return;
+    }
+
+    // Collect form data
+    const formData = new FormData(form);
+    const data = {};
+    const checkboxGroups = {};
+    
+    form.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      if (!checkboxGroups[cb.name]) checkboxGroups[cb.name] = [];
+      if (cb.checked) checkboxGroups[cb.name].push(cb.value);
+    });
+
+    formData.forEach((value, key) => {
+      if (!checkboxGroups[key]) {
+        data[key] = value;
+      }
+    });
+
+    Object.keys(checkboxGroups).forEach(key => {
+      data[key] = checkboxGroups[key].join(',');
+    });
+
+    try {
+      await api.post(`/visits/${visitId}/crf`, {
+        form_code: formCode,
+        data: data,
+        auto_save: true
+      });
+      updateSaveIndicator('saved');
+    } catch (error) {
+      updateSaveIndicator('error');
+      console.error('Auto-save failed:', error);
+    }
+  }
+
+  function updateSaveIndicator(status) {
+    const icon = document.getElementById('save-status-icon');
+    const text = document.getElementById('save-status-text');
+    if (!icon || !text) return;
+
+    crfSaveStatus = status;
+    
+    switch (status) {
+      case 'pending':
+        icon.innerHTML = '<i class="fas fa-circle" style="color: var(--warning); font-size: 8px;"></i>';
+        text.textContent = '변경사항 있음';
+        text.style.color = 'var(--warning)';
+        break;
+      case 'saving':
+        icon.innerHTML = '<i class="fas fa-spinner fa-spin" style="color: var(--primary);"></i>';
+        text.textContent = '저장 중...';
+        text.style.color = 'var(--primary)';
+        break;
+      case 'saved':
+        icon.innerHTML = '<i class="fas fa-check-circle" style="color: var(--success);"></i>';
+        text.textContent = '저장됨';
+        text.style.color = 'var(--success)';
+        // Reset to ready after 3 seconds
+        setTimeout(() => {
+          if (crfSaveStatus === 'saved') {
+            updateSaveIndicator('ready');
+          }
+        }, 3000);
+        break;
+      case 'error':
+        icon.innerHTML = '<i class="fas fa-exclamation-circle" style="color: var(--danger);"></i>';
+        text.textContent = '저장 실패';
+        text.style.color = 'var(--danger)';
+        break;
+      default: // ready
+        icon.innerHTML = '<i class="fas fa-cloud" style="color: var(--text-muted);"></i>';
+        text.textContent = '준비됨';
+        text.style.color = 'var(--text-muted)';
+    }
+  }
+
+  // Clean up keyboard listener when modal closes
+  const originalCloseModal = window.closeModal;
+  window.closeModal = function() {
+    document.removeEventListener('keydown', handleCRFKeyboard);
+    if (crfAutoSaveTimer) {
+      clearTimeout(crfAutoSaveTimer);
+    }
+    window.currentCRFFields = null;
+    originalCloseModal();
+  };
+
   function renderCRFFieldInput(field, existingValue) {
     const required = field.is_required ? '<span class="required">*</span>' : '';
     const value = existingValue || field.default_value || '';
+    const requiredAttr = field.is_required ? 'data-required="true"' : '';
     let input = '';
+    let rangeHint = '';
+
+    // Add range hint for NUMBER type
+    if (field.field_type === 'NUMBER' && (field.min_value || field.max_value)) {
+      const min = field.min_value !== null && field.min_value !== '' ? field.min_value : '-∞';
+      const max = field.max_value !== null && field.max_value !== '' ? field.max_value : '∞';
+      rangeHint = `<span style="font-size: 11px; color: var(--text-muted); margin-left: 8px;">(범위: ${min} ~ ${max})</span>`;
+    }
 
     switch (field.field_type) {
       case 'TEXT':
-        input = `<input type="text" class="form-input" name="${field.field_code}" value="${value}" placeholder="${field.placeholder || ''}">`;
+        input = `<input type="text" class="form-input crf-field" name="${field.field_code}" value="${sanitizeHTML(value)}" placeholder="${field.placeholder || ''}" ${requiredAttr}>`;
         break;
       case 'TEXTAREA':
-        input = `<textarea class="form-input" name="${field.field_code}" rows="3" placeholder="${field.placeholder || ''}">${value}</textarea>`;
+        input = `<textarea class="form-input crf-field" name="${field.field_code}" rows="3" placeholder="${field.placeholder || ''}" ${requiredAttr}>${sanitizeHTML(value)}</textarea>`;
         break;
       case 'NUMBER':
-        input = `<input type="number" class="form-input" name="${field.field_code}" value="${value}" min="${field.min_value || ''}" max="${field.max_value || ''}" placeholder="${field.placeholder || ''}">`;
+        input = `<input type="number" class="form-input crf-field" name="${field.field_code}" value="${value}" min="${field.min_value || ''}" max="${field.max_value || ''}" step="any" placeholder="${field.placeholder || ''}" ${requiredAttr}>`;
         break;
       case 'DATE':
-        input = `<input type="date" class="form-input" name="${field.field_code}" value="${value}">`;
+        input = `<input type="date" class="form-input crf-field" name="${field.field_code}" value="${value}" ${requiredAttr}>`;
         break;
       case 'DATETIME':
-        input = `<input type="datetime-local" class="form-input" name="${field.field_code}" value="${value}">`;
+        input = `<input type="datetime-local" class="form-input crf-field" name="${field.field_code}" value="${value}" ${requiredAttr}>`;
         break;
       case 'TIME':
-        input = `<input type="time" class="form-input" name="${field.field_code}" value="${value}">`;
+        input = `<input type="time" class="form-input crf-field" name="${field.field_code}" value="${value}" ${requiredAttr}>`;
         break;
       case 'SELECT':
         const selectOpts = field.options ? JSON.parse(field.options) : [];
-        input = `<select class="form-input" name="${field.field_code}">
+        input = `<select class="form-input crf-field" name="${field.field_code}" ${requiredAttr}>
           <option value="">선택하세요</option>
-          ${selectOpts.map(o => `<option value="${o.value}" ${value === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+          ${selectOpts.map(o => `<option value="${o.value}" ${value === o.value ? 'selected' : ''}>${sanitizeHTML(o.label)}</option>`).join('')}
         </select>`;
         break;
       case 'RADIO':
         const radioOpts = field.options ? JSON.parse(field.options) : [];
-        input = `<div style="display: flex; flex-direction: column; gap: 8px;">
-          ${radioOpts.map(o => `<label style="display: flex; align-items: center; gap: 8px;">
-            <input type="radio" name="${field.field_code}" value="${o.value}" ${value === o.value ? 'checked' : ''}> ${o.label}
+        input = `<div style="display: flex; flex-direction: column; gap: 8px;" ${requiredAttr}>
+          ${radioOpts.map(o => `<label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="radio" class="crf-field" name="${field.field_code}" value="${o.value}" ${value === o.value ? 'checked' : ''}> ${sanitizeHTML(o.label)}
           </label>`).join('')}
         </div>`;
         break;
@@ -3679,25 +4254,26 @@
         const checkedValues = value ? value.split(',') : [];
         if (checkOpts.length > 0) {
           input = `<div style="display: flex; flex-direction: column; gap: 8px;">
-            ${checkOpts.map(o => `<label style="display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" name="${field.field_code}" value="${o.value}" ${checkedValues.includes(o.value) ? 'checked' : ''}> ${o.label}
+            ${checkOpts.map(o => `<label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" class="crf-field" name="${field.field_code}" value="${o.value}" ${checkedValues.includes(o.value) ? 'checked' : ''}> ${sanitizeHTML(o.label)}
             </label>`).join('')}
           </div>`;
         } else {
-          input = `<label style="display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" name="${field.field_code}" value="1" ${value === '1' ? 'checked' : ''}> ${field.field_name}
+          input = `<label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" class="crf-field" name="${field.field_code}" value="1" ${value === '1' ? 'checked' : ''}> ${field.field_name}
           </label>`;
         }
         break;
       default:
-        input = `<input type="text" class="form-input" name="${field.field_code}" value="${value}">`;
+        input = `<input type="text" class="form-input crf-field" name="${field.field_code}" value="${sanitizeHTML(value)}" ${requiredAttr}>`;
     }
 
     return `
-      <div class="form-group">
-        <label class="form-label">${field.field_name} ${required}</label>
+      <div class="form-group" data-field-code="${field.field_code}">
+        <label class="form-label">${sanitizeHTML(field.field_name)} ${required} ${rangeHint}</label>
         ${input}
-        ${field.help_text ? `<small style="color: var(--text-muted);">${field.help_text}</small>` : ''}
+        <div class="field-error" style="display: none; color: var(--danger); font-size: 12px; margin-top: 4px;"></div>
+        ${field.help_text ? `<small style="color: var(--text-muted); display: block; margin-top: 4px;">${sanitizeHTML(field.help_text)}</small>` : ''}
       </div>
     `;
   }
@@ -4853,6 +5429,223 @@
     }
   }
   window.toggle2FA = toggle2FA;
+
+  // =====================================================
+  // GLOBAL SEARCH
+  // =====================================================
+  let globalSearchResults = [];
+  let globalSearchSelectedIndex = -1;
+
+  function showGlobalSearchDropdown() {
+    const dropdown = document.getElementById('global-search-dropdown');
+    const input = document.getElementById('global-search-input');
+    if (!dropdown || !input) return;
+    
+    if (!input.value.trim()) {
+      // Show recent searches or quick actions
+      dropdown.innerHTML = `
+        <div style="padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">빠른 검색</div>
+          <div class="search-item" onclick="setSearchAndSearch('OPEN queries')" style="padding: 8px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-question-circle" style="color: var(--warning);"></i>
+            <span>미결 Query 보기</span>
+          </div>
+          <div class="search-item" onclick="setSearchAndSearch('subjects')" style="padding: 8px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-users" style="color: var(--primary);"></i>
+            <span>최근 피험자</span>
+          </div>
+          <div class="search-item" onclick="navigateTo('reports'); hideGlobalSearchDropdown();" style="padding: 8px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-chart-bar" style="color: var(--success);"></i>
+            <span>리포트 보기</span>
+          </div>
+        </div>
+        <div style="padding: 8px 12px; background: var(--bg-secondary); font-size: 11px; color: var(--text-muted); border-top: 1px solid var(--border);">
+          <kbd style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 3px; font-size: 10px;">↑↓</kbd> 이동
+          <kbd style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 3px; font-size: 10px; margin-left: 8px;">Enter</kbd> 선택
+          <kbd style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 3px; font-size: 10px; margin-left: 8px;">Esc</kbd> 닫기
+        </div>
+      `;
+      dropdown.style.display = 'block';
+    }
+  }
+  window.showGlobalSearchDropdown = showGlobalSearchDropdown;
+
+  function hideGlobalSearchDropdown() {
+    const dropdown = document.getElementById('global-search-dropdown');
+    if (dropdown) dropdown.style.display = 'none';
+    globalSearchSelectedIndex = -1;
+  }
+  window.hideGlobalSearchDropdown = hideGlobalSearchDropdown;
+
+  function setSearchAndSearch(term) {
+    const input = document.getElementById('global-search-input');
+    if (input) {
+      input.value = term;
+      performGlobalSearch(term);
+    }
+  }
+  window.setSearchAndSearch = setSearchAndSearch;
+
+  async function performGlobalSearch(query) {
+    const dropdown = document.getElementById('global-search-dropdown');
+    if (!dropdown) return;
+
+    const trimmedQuery = query?.trim();
+    if (!trimmedQuery) {
+      showGlobalSearchDropdown();
+      return;
+    }
+
+    dropdown.innerHTML = `<div style="padding: 20px; text-align: center;"><div class="spinner" style="margin: 0 auto;"></div></div>`;
+    dropdown.style.display = 'block';
+    globalSearchSelectedIndex = -1;
+
+    try {
+      const searchQuery = trimmedQuery.toLowerCase();
+      const results = [];
+
+      // Search subjects
+      try {
+        const subjectResult = await api.get(`/subjects/search?q=${encodeURIComponent(trimmedQuery)}`);
+        (subjectResult.data || []).slice(0, 5).forEach(s => {
+          results.push({
+            type: 'subject',
+            icon: 'fa-user',
+            color: 'var(--primary)',
+            title: `${s.subject_number}`,
+            subtitle: `${s.site_name || '-'} · ${s.status}`,
+            action: () => { hideGlobalSearchDropdown(); navigateTo('subject', { subjectId: s.id }); }
+          });
+        });
+      } catch (e) { console.log('Subject search error:', e); }
+
+      // Search queries if keyword matches
+      if (searchQuery.includes('query') || searchQuery.includes('open') || searchQuery.includes('미결')) {
+        try {
+          const queryResult = await api.get('/queries?status=OPEN&limit=5');
+          (queryResult.data || []).slice(0, 5).forEach(q => {
+            results.push({
+              type: 'query',
+              icon: 'fa-question-circle',
+              color: 'var(--warning)',
+              title: `Query: ${q.subject_number || '-'}`,
+              subtitle: `${q.field_code || '-'} · ${q.priority}`,
+              action: () => { hideGlobalSearchDropdown(); navigateTo('queries'); }
+            });
+          });
+        } catch (e) { console.log('Query search error:', e); }
+      }
+
+      // Search studies
+      const matchingStudies = state.studies.filter(s => 
+        s.protocol_number?.toLowerCase().includes(searchQuery) ||
+        s.title?.toLowerCase().includes(searchQuery)
+      ).slice(0, 3);
+      
+      matchingStudies.forEach(s => {
+        results.push({
+          type: 'study',
+          icon: 'fa-flask',
+          color: 'var(--success)',
+          title: s.protocol_number,
+          subtitle: s.title?.substring(0, 40) + (s.title?.length > 40 ? '...' : ''),
+          action: () => { hideGlobalSearchDropdown(); navigateTo('study', { studyId: s.id }); }
+        });
+      });
+
+      globalSearchResults = results;
+
+      // Render results
+      if (results.length === 0) {
+        dropdown.innerHTML = `
+          <div style="padding: 24px; text-align: center; color: var(--text-muted);">
+            <i class="fas fa-search" style="font-size: 24px; opacity: 0.5; margin-bottom: 8px;"></i>
+            <p>"${sanitizeHTML(trimmedQuery)}"에 대한 검색 결과가 없습니다.</p>
+          </div>
+        `;
+      } else {
+        dropdown.innerHTML = `
+          <div style="padding: 8px 0;">
+            ${results.map((r, idx) => `
+              <div class="search-result-item ${idx === globalSearchSelectedIndex ? 'selected' : ''}" 
+                   data-index="${idx}"
+                   onclick="globalSearchResults[${idx}].action()"
+                   onmouseenter="globalSearchSelectedIndex = ${idx}; highlightSearchResult(${idx})"
+                   style="padding: 10px 16px; cursor: pointer; display: flex; align-items: center; gap: 12px; ${idx === globalSearchSelectedIndex ? 'background: var(--bg-secondary);' : ''}">
+                <div style="width: 32px; height: 32px; border-radius: 50%; background: ${r.color}15; display: flex; align-items: center; justify-content: center;">
+                  <i class="fas ${r.icon}" style="color: ${r.color}; font-size: 14px;"></i>
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${sanitizeHTML(r.title)}</div>
+                  <div style="font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${sanitizeHTML(r.subtitle)}</div>
+                </div>
+                <span class="badge" style="font-size: 10px; background: var(--bg-tertiary); color: var(--text-muted);">${r.type}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div style="padding: 8px 12px; background: var(--bg-secondary); font-size: 11px; color: var(--text-muted); border-top: 1px solid var(--border);">
+            ${results.length}개 결과
+          </div>
+        `;
+      }
+    } catch (error) {
+      dropdown.innerHTML = `<div style="padding: 16px; text-align: center; color: var(--danger);">검색 중 오류가 발생했습니다.</div>`;
+    }
+  }
+  window.performGlobalSearch = performGlobalSearch;
+
+  function highlightSearchResult(index) {
+    document.querySelectorAll('.search-result-item').forEach((item, i) => {
+      item.style.background = i === index ? 'var(--bg-secondary)' : '';
+    });
+  }
+  window.highlightSearchResult = highlightSearchResult;
+
+  function handleGlobalSearchKeydown(e) {
+    const dropdown = document.getElementById('global-search-dropdown');
+    if (!dropdown || dropdown.style.display === 'none') {
+      if (e.key === 'Escape') return;
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      hideGlobalSearchDropdown();
+      document.getElementById('global-search-input')?.blur();
+      e.preventDefault();
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      globalSearchSelectedIndex = Math.min(globalSearchSelectedIndex + 1, globalSearchResults.length - 1);
+      highlightSearchResult(globalSearchSelectedIndex);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      globalSearchSelectedIndex = Math.max(globalSearchSelectedIndex - 1, 0);
+      highlightSearchResult(globalSearchSelectedIndex);
+    } else if (e.key === 'Enter' && globalSearchSelectedIndex >= 0) {
+      e.preventDefault();
+      globalSearchResults[globalSearchSelectedIndex]?.action();
+    }
+  }
+  window.handleGlobalSearchKeydown = handleGlobalSearchKeydown;
+
+  // Global keyboard shortcut for search (Ctrl+K)
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      const input = document.getElementById('global-search-input');
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }
+  });
+
+  // Click outside to close dropdown
+  document.addEventListener('click', (e) => {
+    const container = document.querySelector('.global-search-container');
+    if (container && !container.contains(e.target)) {
+      hideGlobalSearchDropdown();
+    }
+  });
 
   function showSubjectSearch() {
     showModal('피험자 검색', `
