@@ -24,6 +24,9 @@ const SIGNATURE_MEANINGS = {
 /**
  * POST /api/signatures/crf/:crfInstanceId
  * CRF 전자서명
+ * - PI 역할만 서명 가능 (SIGN_CRF 권한)
+ * - PI는 해당 Site의 주담당자(is_primary)여야 함
+ * - ADMIN은 예외적으로 항상 서명 가능
  */
 signatures.post('/crf/:crfInstanceId', requireAuth, requirePermission('SIGN_CRF'), async (c) => {
   try {
@@ -38,6 +41,42 @@ signatures.post('/crf/:crfInstanceId', requireAuth, requirePermission('SIGN_CRF'
       return c.json({ success: false, error: '서명을 위해 비밀번호를 입력해주세요.' }, 400);
     }
 
+    // CRF Instance 확인 (먼저 조회하여 Site 정보 획득)
+    const crfInstance = await c.env.DB.prepare(`
+      SELECT ci.*, v.subject_id, s.site_id, si.study_id
+      FROM crf_instances ci
+      JOIN visits v ON ci.visit_id = v.id
+      JOIN subjects s ON v.subject_id = s.id
+      JOIN sites si ON s.site_id = si.id
+      WHERE ci.id = ?
+    `).bind(crfInstanceId).first();
+
+    if (!crfInstance) {
+      return c.json({ success: false, error: 'CRF를 찾을 수 없습니다.' }, 404);
+    }
+
+    // PI 역할인 경우 주담당자 검증 (ADMIN은 예외)
+    if (user.role === 'PI') {
+      const siteUser = await c.env.DB.prepare(`
+        SELECT id, is_primary FROM site_users 
+        WHERE site_id = ? AND user_id = ?
+      `).bind((crfInstance as any).site_id, user.userId).first<{ id: string; is_primary: number }>();
+
+      if (!siteUser) {
+        return c.json({ 
+          success: false, 
+          error: '해당 Site에 할당되지 않은 사용자입니다.' 
+        }, 403);
+      }
+
+      if (!siteUser.is_primary) {
+        return c.json({ 
+          success: false, 
+          error: 'CRF 최종 서명은 Site의 주담당 PI만 가능합니다. 주담당자로 지정되어 있지 않습니다.' 
+        }, 403);
+      }
+    }
+
     // 사용자 비밀번호 확인
     const dbUser = await c.env.DB.prepare(`
       SELECT password_hash FROM users WHERE id = ?
@@ -50,20 +89,6 @@ signatures.post('/crf/:crfInstanceId', requireAuth, requirePermission('SIGN_CRF'
     const isValidPassword = await verifyPassword(password, dbUser.password_hash);
     if (!isValidPassword) {
       return c.json({ success: false, error: '비밀번호가 올바르지 않습니다.' }, 401);
-    }
-
-    // CRF Instance 확인
-    const crfInstance = await c.env.DB.prepare(`
-      SELECT ci.*, v.subject_id, s.site_id, si.study_id
-      FROM crf_instances ci
-      JOIN visits v ON ci.visit_id = v.id
-      JOIN subjects s ON v.subject_id = s.id
-      JOIN sites si ON s.site_id = si.id
-      WHERE ci.id = ?
-    `).bind(crfInstanceId).first();
-
-    if (!crfInstance) {
-      return c.json({ success: false, error: 'CRF를 찾을 수 없습니다.' }, 404);
     }
 
     if ((crfInstance as any).status === 'SIGNED') {

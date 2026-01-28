@@ -255,6 +255,11 @@
       return state.user && ['ADMIN', 'DM'].includes(state.user.role);
     },
 
+    // CRF 서명 권한 확인 (ADMIN 또는 PI만 가능)
+    canSign() {
+      return state.user && ['ADMIN', 'PI'].includes(state.user.role);
+    },
+
     hasPermission(permission) {
       const rolePermissions = {
         ADMIN: ['VIEW_AUDIT', 'EXPORT_DATA', 'MANAGE_USERS', 'MANAGE_STUDIES', 'VIEW_ALL'],
@@ -4492,11 +4497,16 @@
                         ` : `<div style="font-size: 12px; color: var(--text-muted);">아직 데이터가 입력되지 않았습니다.</div>`}
                       </div>
                       <div style="display: flex; gap: 8px;">
-                        ${ui.canWrite() && !['COMPLETED', 'MISSED', 'NOT_DONE'].includes(visit.status) ? `
+                        ${ui.canWrite() && !['COMPLETED', 'MISSED', 'NOT_DONE'].includes(visit.status) && instance?.status !== 'SIGNED' ? `
                           ${instance 
                             ? `<button class="btn btn-secondary btn-sm" onclick="openCRFEntry('${visitId}', '${form.form_code}', '${instance.id}')"><i class="fas fa-edit"></i> 수정</button>`
                             : `<button class="btn btn-primary btn-sm" onclick="openCRFEntry('${visitId}', '${form.form_code}', null)"><i class="fas fa-plus"></i> 입력</button>`
                           }
+                        ` : ''}
+                        ${instance?.status === 'COMPLETE' && ui.canSign() ? `
+                          <button class="btn btn-success btn-sm" onclick="showSignCRFModal('${instance.id}', '${form.form_code}')">
+                            <i class="fas fa-signature"></i> 서명
+                          </button>
                         ` : ''}
                         ${instance ? `<button class="btn btn-secondary btn-sm" onclick="viewCRFData('${instance.id}')"><i class="fas fa-eye"></i></button>` : ''}
                       </div>
@@ -4535,6 +4545,89 @@
     }
   }
   window.completeVisit = completeVisit;
+
+  // =====================================================
+  // CRF 전자서명 (PI 주담당자만 가능)
+  // =====================================================
+  function showSignCRFModal(crfInstanceId, formCode) {
+    const isPrimaryPI = state.user?.role === 'PI';
+    
+    showModal('CRF 전자서명', `
+      <div style="background: var(--bg-tertiary); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+          <i class="fas fa-signature" style="color: var(--primary); font-size: 20px;"></i>
+          <strong>전자서명 확인</strong>
+        </div>
+        <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">
+          본인은 책임연구자로서 이 CRF 데이터가 프로토콜에 따라 정확하게 수집되었음을 승인합니다.
+        </p>
+      </div>
+      
+      ${isPrimaryPI ? `
+        <div style="background: #fff3cd; padding: 12px; border-radius: 8px; margin-bottom: 16px; border-left: 4px solid #ffc107;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-info-circle" style="color: #856404;"></i>
+            <span style="font-size: 13px; color: #856404;">
+              <strong>주담당 PI</strong>만 CRF 최종 서명이 가능합니다.
+            </span>
+          </div>
+        </div>
+      ` : ''}
+      
+      <div class="form-group">
+        <label class="form-label">CRF 양식</label>
+        <input type="text" class="form-input" value="${formCode}" readonly style="background: var(--bg-tertiary);">
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">비밀번호 확인 <span class="required">*</span></label>
+        <input type="password" class="form-input" id="sign-password" placeholder="계정 비밀번호를 입력하세요" autocomplete="current-password">
+        <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+          <i class="fas fa-shield-alt"></i> 21 CFR Part 11 준수를 위한 전자서명 인증
+        </p>
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">서명 사유 (선택)</label>
+        <textarea class="form-input" id="sign-reason" rows="2" placeholder="예: 데이터 검토 완료"></textarea>
+      </div>
+    `, [
+      { label: '취소', onclick: 'closeModal()' },
+      { label: '서명 완료', primary: true, onclick: `signCRF('${crfInstanceId}')` }
+    ]);
+    
+    // 비밀번호 입력 필드에 포커스
+    setTimeout(() => document.getElementById('sign-password')?.focus(), 100);
+  }
+  window.showSignCRFModal = showSignCRFModal;
+
+  async function signCRF(crfInstanceId) {
+    const password = document.getElementById('sign-password')?.value;
+    const signatureReason = document.getElementById('sign-reason')?.value?.trim();
+
+    if (!password) {
+      showToast('비밀번호를 입력해주세요.', 'warning');
+      return;
+    }
+
+    try {
+      const result = await api.post(`/signatures/crf/${crfInstanceId}`, {
+        password,
+        signature_reason: signatureReason || null
+      });
+
+      closeModal();
+      showToast('CRF가 서명되었습니다.', 'success');
+      
+      // 현재 Visit 상세 화면 새로고침
+      if (state.currentVisit?.id) {
+        loadVisitDetail(state.currentVisit.id);
+      }
+    } catch (error) {
+      showToast(error.message || error.error || 'CRF 서명에 실패했습니다.', 'error');
+    }
+  }
+  window.signCRF = signCRF;
 
   // CRF 입력/수정
   async function openCRFEntry(visitId, formCode, crfInstanceId) {
