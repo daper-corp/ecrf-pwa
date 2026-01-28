@@ -938,14 +938,25 @@
   });
 
   // =====================================================
-  // NAVIGATION
+  // NAVIGATION WITH BROWSER HISTORY SUPPORT
   // =====================================================
-  function navigateTo(view, params = {}) {
+  
+  // History management flag to prevent double navigation
+  let isNavigatingFromPopState = false;
+  
+  function navigateTo(view, params = {}, pushToHistory = true) {
     state.currentView = view;
     
     document.querySelectorAll('.header-nav-item').forEach(item => {
       item.classList.toggle('active', item.dataset.view === view);
     });
+    
+    // Push to browser history (unless navigating from popstate)
+    if (pushToHistory && !isNavigatingFromPopState) {
+      const historyState = { view, params };
+      const url = buildUrlFromState(view, params);
+      history.pushState(historyState, '', url);
+    }
     
     updateBreadcrumb(view, params);
     
@@ -980,6 +991,77 @@
     }
   }
   window.navigateTo = navigateTo;
+
+  // Build URL hash from view and params
+  function buildUrlFromState(view, params) {
+    let hash = `#/${view}`;
+    const paramKeys = Object.keys(params);
+    if (paramKeys.length > 0) {
+      const paramStr = paramKeys.map(k => `${k}=${encodeURIComponent(params[k])}`).join('&');
+      hash += `?${paramStr}`;
+    }
+    return hash;
+  }
+
+  // Parse URL hash to view and params
+  function parseUrlHash(hash) {
+    if (!hash || hash === '#' || hash === '#/') {
+      return { view: 'dashboard', params: {} };
+    }
+    
+    // Remove leading #/
+    let path = hash.replace(/^#\/?/, '');
+    
+    // Split view and query string
+    const [viewPart, queryPart] = path.split('?');
+    const view = viewPart || 'dashboard';
+    
+    // Parse query params
+    const params = {};
+    if (queryPart) {
+      queryPart.split('&').forEach(pair => {
+        const [key, value] = pair.split('=');
+        if (key) {
+          params[key] = decodeURIComponent(value || '');
+        }
+      });
+    }
+    
+    return { view, params };
+  }
+
+  // Handle browser back/forward button
+  function handlePopState(event) {
+    isNavigatingFromPopState = true;
+    
+    if (event.state && event.state.view) {
+      // Use saved state
+      navigateTo(event.state.view, event.state.params || {}, false);
+    } else {
+      // Parse from URL hash
+      const { view, params } = parseUrlHash(window.location.hash);
+      navigateTo(view, params, false);
+    }
+    
+    isNavigatingFromPopState = false;
+  }
+
+  // Initialize history handling
+  function initHistoryHandling() {
+    // Listen for back/forward button
+    window.addEventListener('popstate', handlePopState);
+    
+    // Handle initial URL on page load
+    const { view, params } = parseUrlHash(window.location.hash);
+    if (view !== 'dashboard' || Object.keys(params).length > 0) {
+      // If URL has specific view, navigate to it after login
+      state.initialRoute = { view, params };
+    }
+    
+    // Replace initial state
+    const initialState = { view: 'dashboard', params: {} };
+    history.replaceState(initialState, '', '#/dashboard');
+  }
 
   function updateBreadcrumb(view, params) {
     const breadcrumb = document.getElementById('breadcrumb');
@@ -4915,6 +4997,9 @@
   // INITIALIZATION
   // =====================================================
   function init() {
+    // Initialize browser history handling
+    initHistoryHandling();
+    
     const loginForm = document.getElementById('login-form');
     if (loginForm) {
       loginForm.addEventListener('submit', async (e) => {
@@ -4946,7 +5031,13 @@
     updateAuthUI();
     
     if (state.token && state.user) {
-      loadDashboard();
+      // Check for initial route from URL
+      if (state.initialRoute) {
+        navigateTo(state.initialRoute.view, state.initialRoute.params);
+        delete state.initialRoute;
+      } else {
+        loadDashboard();
+      }
     }
 
     setInterval(() => {
