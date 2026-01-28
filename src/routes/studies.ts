@@ -4,7 +4,7 @@
 import { Hono } from 'hono';
 import type { Bindings, Variables, Study, StudyStatus, StudyPhase } from '../types';
 import { requireAuth, getAuthUser, getClientInfo } from '../middleware/auth';
-import { requirePermission, checkStudyAccess } from '../middleware/rbac';
+import { requirePermission, checkStudyAccess, getAccessibleStudyIds, STUDY_ROLES } from '../middleware/rbac';
 import { createAuditLog, type AuditContext } from '../services/audit.service';
 import { generateId } from '../utils/id';
 import { now } from '../utils/date';
@@ -14,6 +14,9 @@ const studies = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 /**
  * GET /api/studies
  * Study 목록 조회
+ * - ADMIN: 모든 Study 조회 가능
+ * - DM/CRA: study_users 테이블에 할당된 Study만 조회
+ * - PI/SUB_INV/CRC: site_users를 통해 할당된 Site의 Study만 조회
  */
 studies.get('/', requireAuth, async (c) => {
   try {
@@ -33,8 +36,18 @@ studies.get('/', requireAuth, async (c) => {
       params.push(status);
     }
 
-    // 권한에 따른 필터링 (ADMIN, DM, CRA는 모든 Study 조회 가능)
-    if (!['ADMIN', 'DM', 'CRA'].includes(user.role)) {
+    // 권한에 따른 필터링
+    if (user.role === 'ADMIN') {
+      // ADMIN은 모든 Study 조회 가능
+    } else if (user.role === 'DM' || user.role === 'CRA') {
+      // DM/CRA는 study_users 테이블에 할당된 Study만 조회
+      query += ` AND id IN (
+        SELECT study_id FROM study_users 
+        WHERE user_id = ? AND status = 'ACTIVE'
+      )`;
+      params.push(user.userId);
+    } else {
+      // PI/SUB_INV/CRC는 site_users를 통해 할당된 Site의 Study만 조회
       query += ` AND id IN (
         SELECT DISTINCT s.study_id FROM sites s
         JOIN site_users su ON s.id = su.site_id
@@ -55,7 +68,15 @@ studies.get('/', requireAuth, async (c) => {
       countParams.push(status);
     }
 
-    if (!['ADMIN', 'DM', 'CRA'].includes(user.role)) {
+    if (user.role === 'ADMIN') {
+      // ADMIN은 전체 카운트
+    } else if (user.role === 'DM' || user.role === 'CRA') {
+      countQuery += ` AND id IN (
+        SELECT study_id FROM study_users 
+        WHERE user_id = ? AND status = 'ACTIVE'
+      )`;
+      countParams.push(user.userId);
+    } else {
       countQuery += ` AND id IN (
         SELECT DISTINCT s.study_id FROM sites s
         JOIN site_users su ON s.id = su.site_id
@@ -1150,6 +1171,337 @@ studies.delete('/:id/form-definitions/:formId/fields/:fieldId', requireAuth, req
     console.error('Delete field definition error:', error);
     return c.json({ success: false, error: 'Field Definition 삭제 중 오류가 발생했습니다.' }, 500);
   }
+});
+
+// =========================================================
+// Study User Management (Study 사용자 할당) API
+// =========================================================
+
+/**
+ * GET /api/studies/:id/users
+ * Study에 할당된 사용자 목록 조회
+ */
+studies.get('/:id/users', requireAuth, async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+
+    // 접근 권한 확인
+    const hasAccess = await checkStudyAccess(c.env.DB, user.userId, user.role, studyId);
+    if (!hasAccess) {
+      return c.json({ success: false, error: '해당 Study에 접근 권한이 없습니다.' }, 403);
+    }
+
+    // Study 사용자 목록 조회
+    const studyUsers = await c.env.DB.prepare(`
+      SELECT 
+        su.id, su.study_id, su.user_id, su.role_in_study, su.is_primary, 
+        su.assigned_at, su.notes, su.status,
+        u.email, u.name, u.role as system_role,
+        ab.name as assigned_by_name
+      FROM study_users su
+      JOIN users u ON su.user_id = u.id
+      LEFT JOIN users ab ON su.assigned_by = ab.id
+      WHERE su.study_id = ?
+      ORDER BY su.is_primary DESC, su.assigned_at DESC
+    `).bind(studyId).all();
+
+    return c.json({
+      success: true,
+      data: studyUsers.results,
+    });
+  } catch (error) {
+    console.error('Get study users error:', error);
+    return c.json({ success: false, error: 'Study 사용자 목록 조회 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * POST /api/studies/:id/users
+ * Study에 사용자 할당 (ADMIN, DM만 가능)
+ */
+studies.post('/:id/users', requireAuth, requirePermission('ASSIGN_STUDY_USERS'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+    const body = await c.req.json();
+    const { user_id, role_in_study, is_primary, notes } = body;
+
+    if (!user_id || !role_in_study) {
+      return c.json({ success: false, error: '사용자 ID와 역할은 필수입니다.' }, 400);
+    }
+
+    // 유효한 역할인지 확인
+    const validRoles = Object.keys(STUDY_ROLES);
+    if (!validRoles.includes(role_in_study)) {
+      return c.json({ 
+        success: false, 
+        error: `유효하지 않은 역할입니다. 가능한 역할: ${validRoles.join(', ')}` 
+      }, 400);
+    }
+
+    // Study 존재 확인
+    const study = await c.env.DB.prepare(`
+      SELECT id, protocol_number FROM studies WHERE id = ?
+    `).bind(studyId).first();
+
+    if (!study) {
+      return c.json({ success: false, error: 'Study를 찾을 수 없습니다.' }, 404);
+    }
+
+    // 사용자 존재 확인 및 역할 확인
+    const targetUser = await c.env.DB.prepare(`
+      SELECT id, email, name, role FROM users WHERE id = ? AND status = 'ACTIVE'
+    `).bind(user_id).first<{ id: string; email: string; name: string; role: string }>();
+
+    if (!targetUser) {
+      return c.json({ success: false, error: '사용자를 찾을 수 없거나 비활성 상태입니다.' }, 404);
+    }
+
+    // DM/CRA만 Study에 할당 가능 (PI/CRC는 Site에 할당)
+    if (!['DM', 'CRA'].includes(targetUser.role)) {
+      return c.json({ 
+        success: false, 
+        error: 'Study에는 DM 또는 CRA 역할의 사용자만 할당할 수 있습니다. PI/CRC는 Site에 할당해주세요.' 
+      }, 400);
+    }
+
+    // 중복 할당 확인
+    const existing = await c.env.DB.prepare(`
+      SELECT id FROM study_users WHERE study_id = ? AND user_id = ?
+    `).bind(studyId, user_id).first();
+
+    if (existing) {
+      return c.json({ success: false, error: '이미 해당 Study에 할당된 사용자입니다.' }, 400);
+    }
+
+    const studyUserId = generateId('stu');
+    const timestamp = now();
+
+    await c.env.DB.prepare(`
+      INSERT INTO study_users (
+        id, study_id, user_id, role_in_study, is_primary, assigned_at, assigned_by, notes, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE')
+    `).bind(
+      studyUserId, studyId, user_id, role_in_study, 
+      is_primary ? 1 : 0, timestamp, user.userId, notes ?? null
+    ).run();
+
+    // Audit Log
+    const { ipAddress, userAgent } = getClientInfo(c);
+    await createAuditLog(c.env.DB, {
+      user,
+      ipAddress: ipAddress ?? undefined,
+      userAgent: userAgent ?? undefined,
+      sessionId: c.get('sessionId') ?? undefined,
+      studyId,
+    }, {
+      action: 'CREATE',
+      tableName: 'study_users',
+      recordId: studyUserId,
+      newValue: JSON.stringify({ 
+        user_id, 
+        user_email: targetUser.email, 
+        user_name: targetUser.name,
+        role_in_study, 
+        is_primary 
+      }),
+    });
+
+    const newStudyUser = await c.env.DB.prepare(`
+      SELECT 
+        su.id, su.study_id, su.user_id, su.role_in_study, su.is_primary, 
+        su.assigned_at, su.notes, su.status,
+        u.email, u.name, u.role as system_role
+      FROM study_users su
+      JOIN users u ON su.user_id = u.id
+      WHERE su.id = ?
+    `).bind(studyUserId).first();
+
+    return c.json({ success: true, data: newStudyUser }, 201);
+  } catch (error) {
+    console.error('Create study user error:', error);
+    return c.json({ success: false, error: 'Study 사용자 할당 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * PUT /api/studies/:id/users/:studyUserId
+ * Study 사용자 정보 수정
+ */
+studies.put('/:id/users/:studyUserId', requireAuth, requirePermission('ASSIGN_STUDY_USERS'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+    const studyUserId = c.req.param('studyUserId');
+    const body = await c.req.json();
+    const { role_in_study, is_primary, notes, status } = body;
+
+    // 기존 할당 정보 조회
+    const existing = await c.env.DB.prepare(`
+      SELECT su.*, u.email, u.name FROM study_users su
+      JOIN users u ON su.user_id = u.id
+      WHERE su.id = ? AND su.study_id = ?
+    `).bind(studyUserId, studyId).first<any>();
+
+    if (!existing) {
+      return c.json({ success: false, error: '해당 할당 정보를 찾을 수 없습니다.' }, 404);
+    }
+
+    await c.env.DB.prepare(`
+      UPDATE study_users SET
+        role_in_study = COALESCE(?, role_in_study),
+        is_primary = COALESCE(?, is_primary),
+        notes = COALESCE(?, notes),
+        status = COALESCE(?, status),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(
+      role_in_study ?? null,
+      is_primary !== undefined ? (is_primary ? 1 : 0) : null,
+      notes ?? null,
+      status ?? null,
+      studyUserId
+    ).run();
+
+    // Audit Log
+    const { ipAddress, userAgent } = getClientInfo(c);
+    await createAuditLog(c.env.DB, {
+      user,
+      ipAddress: ipAddress ?? undefined,
+      userAgent: userAgent ?? undefined,
+      sessionId: c.get('sessionId') ?? undefined,
+      studyId,
+    }, {
+      action: 'UPDATE',
+      tableName: 'study_users',
+      recordId: studyUserId,
+      oldValue: JSON.stringify({ 
+        role_in_study: existing.role_in_study, 
+        is_primary: existing.is_primary,
+        status: existing.status 
+      }),
+      newValue: JSON.stringify({ role_in_study, is_primary, status }),
+    });
+
+    const updated = await c.env.DB.prepare(`
+      SELECT 
+        su.id, su.study_id, su.user_id, su.role_in_study, su.is_primary, 
+        su.assigned_at, su.notes, su.status,
+        u.email, u.name, u.role as system_role
+      FROM study_users su
+      JOIN users u ON su.user_id = u.id
+      WHERE su.id = ?
+    `).bind(studyUserId).first();
+
+    return c.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Update study user error:', error);
+    return c.json({ success: false, error: 'Study 사용자 수정 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * DELETE /api/studies/:id/users/:studyUserId
+ * Study 사용자 할당 해제
+ */
+studies.delete('/:id/users/:studyUserId', requireAuth, requirePermission('ASSIGN_STUDY_USERS'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+    const studyUserId = c.req.param('studyUserId');
+
+    // 기존 할당 정보 조회
+    const existing = await c.env.DB.prepare(`
+      SELECT su.*, u.email, u.name FROM study_users su
+      JOIN users u ON su.user_id = u.id
+      WHERE su.id = ? AND su.study_id = ?
+    `).bind(studyUserId, studyId).first<any>();
+
+    if (!existing) {
+      return c.json({ success: false, error: '해당 할당 정보를 찾을 수 없습니다.' }, 404);
+    }
+
+    await c.env.DB.prepare(`
+      DELETE FROM study_users WHERE id = ?
+    `).bind(studyUserId).run();
+
+    // Audit Log
+    const { ipAddress, userAgent } = getClientInfo(c);
+    await createAuditLog(c.env.DB, {
+      user,
+      ipAddress: ipAddress ?? undefined,
+      userAgent: userAgent ?? undefined,
+      sessionId: c.get('sessionId') ?? undefined,
+      studyId,
+    }, {
+      action: 'DELETE',
+      tableName: 'study_users',
+      recordId: studyUserId,
+      oldValue: JSON.stringify({ 
+        user_email: existing.email, 
+        user_name: existing.name, 
+        role_in_study: existing.role_in_study 
+      }),
+    });
+
+    return c.json({ success: true, message: '사용자 할당이 해제되었습니다.' });
+  } catch (error) {
+    console.error('Delete study user error:', error);
+    return c.json({ success: false, error: 'Study 사용자 할당 해제 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * GET /api/studies/:id/assignable-users
+ * Study에 할당 가능한 사용자 목록 조회 (DM, CRA 역할만)
+ */
+studies.get('/:id/assignable-users', requireAuth, requirePermission('ASSIGN_STUDY_USERS'), async (c) => {
+  try {
+    const user = getAuthUser(c);
+    if (!user) return c.json({ success: false, error: '인증 정보가 없습니다.' }, 401);
+
+    const studyId = c.req.param('id');
+
+    // DM, CRA 역할의 활성 사용자 중 아직 해당 Study에 할당되지 않은 사용자
+    const users = await c.env.DB.prepare(`
+      SELECT id, email, name, role
+      FROM users
+      WHERE role IN ('DM', 'CRA')
+        AND status = 'ACTIVE'
+        AND id NOT IN (
+          SELECT user_id FROM study_users WHERE study_id = ?
+        )
+      ORDER BY role, name
+    `).bind(studyId).all();
+
+    return c.json({
+      success: true,
+      data: users.results,
+    });
+  } catch (error) {
+    console.error('Get assignable users error:', error);
+    return c.json({ success: false, error: '할당 가능한 사용자 목록 조회 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+/**
+ * GET /api/study-roles
+ * Study 내 역할 목록 조회
+ */
+studies.get('/study-roles', requireAuth, async (c) => {
+  return c.json({
+    success: true,
+    data: Object.entries(STUDY_ROLES).map(([code, label]) => ({ code, label })),
+  });
 });
 
 export default studies;

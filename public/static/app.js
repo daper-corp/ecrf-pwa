@@ -2146,11 +2146,256 @@
             `}
           </div>
         </div>
+
+        ${ui.canManage() ? `
+        <div class="card" id="study-users-section">
+          <div class="card-header">
+            <span class="card-title"><i class="fas fa-user-tie"></i> 담당자 관리 (DM/CRA)</span>
+            <button class="btn btn-primary btn-sm" onclick="showAssignStudyUserModal('${study.id}')"><i class="fas fa-user-plus"></i> 담당자 추가</button>
+          </div>
+          <div class="card-body compact" id="study-users-list">
+            <div class="loading"><div class="spinner"></div><span>담당자 목록 로딩 중...</span></div>
+          </div>
+        </div>
+        ` : ''}
       `;
+
+      // 담당자 목록 로드
+      if (ui.canManage()) {
+        loadStudyUsers(studyId);
+      }
     } catch (error) {
       mainContent.innerHTML = `<div class="empty-state" style="margin-top: 40px;"><i class="fas fa-exclamation-circle" style="color: var(--danger);"></i><h3>Study 로드 실패</h3><button class="btn btn-primary" style="margin-top: 16px;" onclick="navigateTo('dashboard')">대시보드로 돌아가기</button></div>`;
     }
   }
+
+  // =====================================================
+  // Study 사용자 관리 (DM/CRA 할당)
+  // =====================================================
+
+  const STUDY_ROLES = {
+    SPONSOR_PM: '스폰서 PM',
+    SPONSOR_DM: '스폰서 DM',
+    SPONSOR_CRA: '스폰서 CRA',
+    CRO_PM: 'CRO PM',
+    CRO_DM: 'CRO DM',
+    CRO_CRA: 'CRO CRA',
+  };
+
+  async function loadStudyUsers(studyId) {
+    const container = document.getElementById('study-users-list');
+    if (!container) return;
+
+    try {
+      const result = await api.get(`/studies/${studyId}/users`);
+      const users = result.data || [];
+
+      if (users.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state" style="padding: 32px;">
+            <i class="fas fa-user-tie" style="font-size: 32px; color: var(--text-muted);"></i>
+            <h3 style="margin-top: 12px;">할당된 담당자가 없습니다</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 16px;">DM 또는 CRA를 이 Study에 할당해 주세요.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>담당자</th>
+              <th>시스템 역할</th>
+              <th>Study 내 역할</th>
+              <th>주담당</th>
+              <th>할당일</th>
+              <th>상태</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${users.map(u => `
+              <tr>
+                <td>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <div class="user-avatar" style="width: 32px; height: 32px; font-size: 12px;">${ui.getInitials(u.name)}</div>
+                    <div>
+                      <div style="font-weight: 500;">${u.name}</div>
+                      <div style="font-size: 12px; color: var(--text-muted);">${u.email}</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="badge badge-info">${ui.getRoleShort(u.system_role)}</span></td>
+                <td>${STUDY_ROLES[u.role_in_study] || u.role_in_study}</td>
+                <td>${u.is_primary ? '<i class="fas fa-star" style="color: var(--warning);"></i>' : '-'}</td>
+                <td>${ui.formatDate(u.assigned_at)}</td>
+                <td>${u.status === 'ACTIVE' ? '<span class="badge badge-active">활성</span>' : '<span class="badge badge-inactive">비활성</span>'}</td>
+                <td>
+                  <button class="btn btn-secondary btn-sm" onclick="showEditStudyUserModal('${studyId}', ${JSON.stringify(u).replace(/"/g, '&quot;')})" style="padding: 4px 8px;" title="수정">
+                    <i class="fas fa-edit"></i>
+                  </button>
+                  <button class="btn btn-secondary btn-sm" onclick="removeStudyUser('${studyId}', '${u.id}', '${u.name}')" style="padding: 4px 8px;" title="할당 해제">
+                    <i class="fas fa-user-minus"></i>
+                  </button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    } catch (error) {
+      container.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-circle" style="color: var(--danger);"></i><p>담당자 목록을 불러올 수 없습니다.</p></div>`;
+    }
+  }
+  window.loadStudyUsers = loadStudyUsers;
+
+  async function showAssignStudyUserModal(studyId) {
+    // 할당 가능한 사용자 목록 조회
+    try {
+      const result = await api.get(`/studies/${studyId}/assignable-users`);
+      const users = result.data || [];
+
+      if (users.length === 0) {
+        showToast('할당 가능한 DM/CRA 사용자가 없습니다. 먼저 사용자를 생성해 주세요.', 'warning');
+        return;
+      }
+
+      showModal('Study 담당자 추가', `
+        <div class="form-group">
+          <label class="form-label">사용자 선택 <span class="required">*</span></label>
+          <select class="form-input" id="assign-user-id">
+            <option value="">-- 사용자 선택 --</option>
+            ${users.map(u => `<option value="${u.id}">${u.name} (${u.email}) - ${ui.getRoleShort(u.role)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Study 내 역할 <span class="required">*</span></label>
+          <select class="form-input" id="assign-role-in-study">
+            <option value="">-- 역할 선택 --</option>
+            ${Object.entries(STUDY_ROLES).map(([code, label]) => `<option value="${code}">${label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">
+            <input type="checkbox" id="assign-is-primary" style="margin-right: 8px;">
+            주담당자로 지정
+          </label>
+        </div>
+        <div class="form-group">
+          <label class="form-label">메모</label>
+          <textarea class="form-input" id="assign-notes" rows="2" placeholder="예: 2024년 1월부터 담당"></textarea>
+        </div>
+      `, [
+        { label: '취소', onclick: 'closeModal()' },
+        { label: '할당', primary: true, onclick: `assignStudyUser('${studyId}')` }
+      ]);
+    } catch (error) {
+      showToast('할당 가능한 사용자 목록을 불러올 수 없습니다.', 'error');
+    }
+  }
+  window.showAssignStudyUserModal = showAssignStudyUserModal;
+
+  async function assignStudyUser(studyId) {
+    const userId = document.getElementById('assign-user-id')?.value;
+    const roleInStudy = document.getElementById('assign-role-in-study')?.value;
+    const isPrimary = document.getElementById('assign-is-primary')?.checked;
+    const notes = document.getElementById('assign-notes')?.value?.trim();
+
+    if (!userId || !roleInStudy) {
+      showToast('사용자와 역할을 선택해 주세요.', 'warning');
+      return;
+    }
+
+    try {
+      await api.post(`/studies/${studyId}/users`, {
+        user_id: userId,
+        role_in_study: roleInStudy,
+        is_primary: isPrimary,
+        notes: notes || null
+      });
+      closeModal();
+      showToast('담당자가 할당되었습니다.', 'success');
+      loadStudyUsers(studyId);
+    } catch (error) {
+      showToast(error.message || '담당자 할당에 실패했습니다.', 'error');
+    }
+  }
+  window.assignStudyUser = assignStudyUser;
+
+  function showEditStudyUserModal(studyId, user) {
+    showModal('담당자 정보 수정', `
+      <div style="margin-bottom: 16px; padding: 12px; background: var(--bg-hover); border-radius: 8px;">
+        <strong>${user.name}</strong> (${user.email})
+      </div>
+      <div class="form-group">
+        <label class="form-label">Study 내 역할</label>
+        <select class="form-input" id="edit-role-in-study">
+          ${Object.entries(STUDY_ROLES).map(([code, label]) => 
+            `<option value="${code}" ${user.role_in_study === code ? 'selected' : ''}>${label}</option>`
+          ).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">
+          <input type="checkbox" id="edit-is-primary" style="margin-right: 8px;" ${user.is_primary ? 'checked' : ''}>
+          주담당자로 지정
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-label">상태</label>
+        <select class="form-input" id="edit-user-status">
+          <option value="ACTIVE" ${user.status === 'ACTIVE' ? 'selected' : ''}>활성</option>
+          <option value="INACTIVE" ${user.status === 'INACTIVE' ? 'selected' : ''}>비활성</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">메모</label>
+        <textarea class="form-input" id="edit-user-notes" rows="2">${user.notes || ''}</textarea>
+      </div>
+    `, [
+      { label: '취소', onclick: 'closeModal()' },
+      { label: '저장', primary: true, onclick: `updateStudyUser('${studyId}', '${user.id}')` }
+    ]);
+  }
+  window.showEditStudyUserModal = showEditStudyUserModal;
+
+  async function updateStudyUser(studyId, studyUserId) {
+    const roleInStudy = document.getElementById('edit-role-in-study')?.value;
+    const isPrimary = document.getElementById('edit-is-primary')?.checked;
+    const status = document.getElementById('edit-user-status')?.value;
+    const notes = document.getElementById('edit-user-notes')?.value?.trim();
+
+    try {
+      await api.put(`/studies/${studyId}/users/${studyUserId}`, {
+        role_in_study: roleInStudy,
+        is_primary: isPrimary,
+        status: status,
+        notes: notes || null
+      });
+      closeModal();
+      showToast('담당자 정보가 수정되었습니다.', 'success');
+      loadStudyUsers(studyId);
+    } catch (error) {
+      showToast(error.message || '담당자 정보 수정에 실패했습니다.', 'error');
+    }
+  }
+  window.updateStudyUser = updateStudyUser;
+
+  async function removeStudyUser(studyId, studyUserId, userName) {
+    if (!confirm(`${userName}님을 이 Study에서 제외하시겠습니까?\n\n제외 후에는 해당 사용자가 이 Study에 접근할 수 없습니다.`)) {
+      return;
+    }
+
+    try {
+      await api.delete(`/studies/${studyId}/users/${studyUserId}`);
+      showToast('담당자 할당이 해제되었습니다.', 'success');
+      loadStudyUsers(studyId);
+    } catch (error) {
+      showToast(error.message || '담당자 할당 해제에 실패했습니다.', 'error');
+    }
+  }
+  window.removeStudyUser = removeStudyUser;
 
   // Study 잠금 모달
   function showLockStudyModal(studyId) {
