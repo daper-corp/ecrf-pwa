@@ -297,17 +297,20 @@ const htmlTemplate = (title: string, content: string) => `
       .sub-header {
         background: #fff;
         border-bottom: 1px solid var(--border);
-        padding: 0 16px;
+        padding: 0 20px;
         height: 40px;
         display: flex;
         align-items: center;
+        justify-content: center;
       }
       
       .breadcrumb {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 6px;
         font-size: 13px;
+        width: 100%;
+        max-width: 1400px;
       }
       
       .breadcrumb a {
