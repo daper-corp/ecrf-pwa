@@ -2055,120 +2055,164 @@
         </div>
 
         <div class="stats-grid">
-          <div class="stat-card"><div class="stat-label">연구기관</div><div class="stat-value">${sites.length}</div></div>
+          <div class="stat-card" style="cursor: pointer;" onclick="switchStudyTab('sites')"><div class="stat-label">연구기관</div><div class="stat-value">${sites.length}</div></div>
           <div class="stat-card"><div class="stat-label">피험자</div><div class="stat-value">${study.subjectsCount || 0}</div></div>
-          <div class="stat-card"><div class="stat-label">CRF</div><div class="stat-value">${(stats.crfs || []).reduce((sum, c) => sum + c.count, 0)}</div></div>
+          <div class="stat-card" style="cursor: pointer;" onclick="switchStudyTab('forms')"><div class="stat-label">CRF 양식</div><div class="stat-value">${(study.formDefinitions || []).length}</div></div>
           <div class="stat-card" style="cursor: pointer;" onclick="navigateTo('queries', {studyId: '${study.id}'})"><div class="stat-label">미결 Query</div><div class="stat-value">${(stats.queries || []).find(q => q.status === 'OPEN')?.count || 0}</div></div>
         </div>
 
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">방문 일정 (${(study.visitSchedules || []).length})</span>
-            ${ui.canManage() && study.status !== 'LOCKED' ? `<button class="btn btn-primary btn-sm" onclick="showNewVisitScheduleModal('${study.id}')"><i class="fas fa-plus"></i> 방문 추가</button>` : ''}
-          </div>
-          <div class="card-body compact">
-            ${(study.visitSchedules || []).length === 0 ? `<div class="empty-state"><i class="fas fa-calendar-alt"></i><h3>등록된 방문 일정이 없습니다</h3>${ui.canManage() && study.status !== 'LOCKED' ? `<p style="color: var(--text-secondary); margin-bottom: 16px;">Study에 방문 일정을 추가해 주세요</p><button class="btn btn-primary" onclick="showNewVisitScheduleModal('${study.id}')"><i class="fas fa-plus"></i> 방문 추가</button>` : ''}</div>` : `
-              <table class="data-table">
-                <thead><tr><th>번호</th><th>방문명</th><th>예정일(Day)</th><th>Window</th><th>필수</th><th></th></tr></thead>
-                <tbody>
-                  ${(study.visitSchedules || []).map(vs => `
-                    <tr>
-                      <td><strong>V${vs.visit_number}</strong></td>
-                      <td>${vs.visit_name}</td>
-                      <td>Day ${vs.target_day || 0}</td>
-                      <td>-${vs.visit_window_before || 0} / +${vs.visit_window_after || 0}</td>
-                      <td>${vs.is_required ? '<span class="badge badge-active">필수</span>' : '<span class="badge badge-draft">선택</span>'}</td>
-                      <td>
-                        ${ui.canManage() && study.status !== 'LOCKED' ? `
-                          <button class="btn btn-secondary btn-sm" onclick="showEditVisitScheduleModal('${study.id}', '${vs.id}')" style="padding: 4px 8px;"><i class="fas fa-edit"></i></button>
-                          <button class="btn btn-secondary btn-sm" onclick="deleteVisitSchedule('${study.id}', '${vs.id}')" style="padding: 4px 8px;"><i class="fas fa-trash"></i></button>
-                        ` : ''}
-                      </td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            `}
+        <!-- 탭 네비게이션 -->
+        <div class="tabs" id="study-tabs">
+          <button class="tab-btn active" data-tab="sites" onclick="switchStudyTab('sites')">
+            <i class="fas fa-hospital"></i> 연구기관 <span class="badge badge-info">${sites.length}</span>
+          </button>
+          <button class="tab-btn" data-tab="visits" onclick="switchStudyTab('visits')">
+            <i class="fas fa-calendar-alt"></i> 방문일정 <span class="badge badge-info">${(study.visitSchedules || []).length}</span>
+          </button>
+          <button class="tab-btn" data-tab="forms" onclick="switchStudyTab('forms')">
+            <i class="fas fa-file-medical"></i> CRF 양식 <span class="badge badge-info">${(study.formDefinitions || []).length}</span>
+          </button>
+          ${ui.canManage() ? `
+          <button class="tab-btn" data-tab="users" onclick="switchStudyTab('users')">
+            <i class="fas fa-user-tie"></i> 담당자
+          </button>
+          ` : ''}
+        </div>
+
+        <!-- 연구기관 탭 -->
+        <div class="tab-content active" id="tab-sites">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">연구기관 목록</span>
+              ${ui.canManage() ? `<button class="btn btn-primary btn-sm" onclick="showNewSiteModal('${study.id}')"><i class="fas fa-plus"></i> 기관 추가</button>` : ''}
+            </div>
+            <div class="card-body compact">
+              ${sites.length === 0 ? `<div class="empty-state"><i class="fas fa-hospital"></i><h3>등록된 연구기관이 없습니다</h3>${ui.canManage() ? `<p style="color: var(--text-secondary); margin-bottom: 16px;">연구기관을 추가하여 피험자를 등록하세요</p><button class="btn btn-primary" onclick="showNewSiteModal('${study.id}')"><i class="fas fa-plus"></i> 기관 추가</button>` : ''}</div>` : `
+                <table class="data-table">
+                  <thead><tr><th>기관번호</th><th>기관명</th><th>PI</th><th>상태</th><th>피험자</th><th></th></tr></thead>
+                  <tbody>
+                    ${sites.map(site => `
+                      <tr class="clickable" onclick="navigateTo('site', {siteId: '${site.id}'})">
+                        <td><strong>${site.site_number}</strong></td>
+                        <td>${site.name}</td>
+                        <td>${site.pi_name || '-'}</td>
+                        <td>${getStatusBadge(site.status)}</td>
+                        <td>${site.subject_count || 0}명</td>
+                        <td style="color: var(--text-muted);"><i class="fas fa-chevron-right"></i></td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              `}
+            </div>
           </div>
         </div>
 
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">CRF 양식 (${(study.formDefinitions || []).length})</span>
-            ${ui.canManage() && study.status !== 'LOCKED' ? `<button class="btn btn-primary btn-sm" onclick="showNewFormDefinitionModal('${study.id}')"><i class="fas fa-plus"></i> 양식 추가</button>` : ''}
-          </div>
-          <div class="card-body compact">
-            ${(study.formDefinitions || []).length === 0 ? `<div class="empty-state"><i class="fas fa-file-medical"></i><h3>등록된 CRF 양식이 없습니다</h3>${ui.canManage() && study.status !== 'LOCKED' ? `<p style="color: var(--text-secondary); margin-bottom: 16px;">CRF 데이터 수집을 위해 양식을 추가해 주세요</p><button class="btn btn-primary" onclick="showNewFormDefinitionModal('${study.id}')"><i class="fas fa-plus"></i> 양식 추가</button>` : ''}</div>` : `
-              <table class="data-table">
-                <thead><tr><th>순서</th><th>양식 코드</th><th>양식명</th><th>방문</th><th>필드</th><th>필수</th><th></th></tr></thead>
-                <tbody>
-                  ${(study.formDefinitions || []).map(form => {
-                    const visitSchedule = (study.visitSchedules || []).find(vs => vs.id === form.visit_schedule_id);
-                    return `
-                    <tr class="clickable" onclick="navigateTo('form', {studyId: '${study.id}', formId: '${form.id}'})">
-                      <td>${form.form_order || '-'}</td>
-                      <td><strong>${form.form_code}</strong></td>
-                      <td>${form.form_name}</td>
-                      <td>${visitSchedule ? visitSchedule.visit_name : '전체'}</td>
-                      <td>${form.field_count || 0}개</td>
-                      <td>${form.is_required ? '<span class="badge badge-active">필수</span>' : '<span class="badge badge-draft">선택</span>'}</td>
-                      <td onclick="event.stopPropagation();">
-                        ${ui.canManage() && study.status !== 'LOCKED' ? `
-                          <button class="btn btn-secondary btn-sm" onclick="showEditFormDefinitionModal('${study.id}', '${form.id}')" style="padding: 4px 8px;"><i class="fas fa-edit"></i></button>
-                          <button class="btn btn-secondary btn-sm" onclick="deleteFormDefinition('${study.id}', '${form.id}')" style="padding: 4px 8px;"><i class="fas fa-trash"></i></button>
-                        ` : ''}
-                      </td>
-                    </tr>
-                  `}).join('')}
-                </tbody>
-              </table>
-            `}
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">연구기관 목록 (${sites.length})</span>
-            ${ui.canManage() ? `<button class="btn btn-primary btn-sm" onclick="showNewSiteModal('${study.id}')"><i class="fas fa-plus"></i> 기관 추가</button>` : ''}
-          </div>
-          <div class="card-body compact">
-            ${sites.length === 0 ? `<div class="empty-state"><i class="fas fa-hospital"></i><h3>등록된 연구기관이 없습니다</h3></div>` : `
-              <table class="data-table">
-                <thead><tr><th>기관번호</th><th>기관명</th><th>PI</th><th>상태</th><th>피험자</th><th></th></tr></thead>
-                <tbody>
-                  ${sites.map(site => `
-                    <tr class="clickable" onclick="navigateTo('site', {siteId: '${site.id}'})">
-                      <td><strong>${site.site_number}</strong></td>
-                      <td>${site.name}</td>
-                      <td>${site.pi_name || '-'}</td>
-                      <td>${getStatusBadge(site.status)}</td>
-                      <td>${site.subject_count || 0}명</td>
-                      <td style="color: var(--text-muted);"><i class="fas fa-chevron-right"></i></td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            `}
+        <!-- 방문일정 탭 -->
+        <div class="tab-content" id="tab-visits">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">방문 일정</span>
+              ${ui.canManage() && study.status !== 'LOCKED' ? `<button class="btn btn-primary btn-sm" onclick="showNewVisitScheduleModal('${study.id}')"><i class="fas fa-plus"></i> 방문 추가</button>` : ''}
+            </div>
+            <div class="card-body compact">
+              ${(study.visitSchedules || []).length === 0 ? `<div class="empty-state"><i class="fas fa-calendar-alt"></i><h3>등록된 방문 일정이 없습니다</h3>${ui.canManage() && study.status !== 'LOCKED' ? `<p style="color: var(--text-secondary); margin-bottom: 16px;">Study에 방문 일정을 추가해 주세요</p><button class="btn btn-primary" onclick="showNewVisitScheduleModal('${study.id}')"><i class="fas fa-plus"></i> 방문 추가</button>` : ''}</div>` : `
+                <table class="data-table">
+                  <thead><tr><th>번호</th><th>방문명</th><th>예정일(Day)</th><th>Window</th><th>필수</th><th></th></tr></thead>
+                  <tbody>
+                    ${(study.visitSchedules || []).map(vs => `
+                      <tr>
+                        <td><strong>V${vs.visit_number}</strong></td>
+                        <td>${vs.visit_name}</td>
+                        <td>Day ${vs.target_day || 0}</td>
+                        <td>-${vs.visit_window_before || 0} / +${vs.visit_window_after || 0}</td>
+                        <td>${vs.is_required ? '<span class="badge badge-active">필수</span>' : '<span class="badge badge-draft">선택</span>'}</td>
+                        <td>
+                          ${ui.canManage() && study.status !== 'LOCKED' ? `
+                            <button class="btn btn-secondary btn-sm" onclick="showEditVisitScheduleModal('${study.id}', '${vs.id}')" style="padding: 4px 8px;"><i class="fas fa-edit"></i></button>
+                            <button class="btn btn-secondary btn-sm" onclick="deleteVisitSchedule('${study.id}', '${vs.id}')" style="padding: 4px 8px;"><i class="fas fa-trash"></i></button>
+                          ` : ''}
+                        </td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              `}
+            </div>
           </div>
         </div>
 
+        <!-- CRF 양식 탭 -->
+        <div class="tab-content" id="tab-forms">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">CRF 양식</span>
+              ${ui.canManage() && study.status !== 'LOCKED' ? `<button class="btn btn-primary btn-sm" onclick="showNewFormDefinitionModal('${study.id}')"><i class="fas fa-plus"></i> 양식 추가</button>` : ''}
+            </div>
+            <div class="card-body compact">
+              ${(study.formDefinitions || []).length === 0 ? `<div class="empty-state"><i class="fas fa-file-medical"></i><h3>등록된 CRF 양식이 없습니다</h3>${ui.canManage() && study.status !== 'LOCKED' ? `<p style="color: var(--text-secondary); margin-bottom: 16px;">CRF 데이터 수집을 위해 양식을 추가해 주세요</p><button class="btn btn-primary" onclick="showNewFormDefinitionModal('${study.id}')"><i class="fas fa-plus"></i> 양식 추가</button>` : ''}</div>` : `
+                <table class="data-table">
+                  <thead><tr><th>순서</th><th>양식 코드</th><th>양식명</th><th>방문</th><th>필드</th><th>필수</th><th></th></tr></thead>
+                  <tbody>
+                    ${(study.formDefinitions || []).map(form => {
+                      const visitSchedule = (study.visitSchedules || []).find(vs => vs.id === form.visit_schedule_id);
+                      return `
+                      <tr class="clickable" onclick="navigateTo('form', {studyId: '${study.id}', formId: '${form.id}'})">
+                        <td>${form.form_order || '-'}</td>
+                        <td><strong>${form.form_code}</strong></td>
+                        <td>${form.form_name}</td>
+                        <td>${visitSchedule ? visitSchedule.visit_name : '전체'}</td>
+                        <td>${form.field_count || 0}개</td>
+                        <td>${form.is_required ? '<span class="badge badge-active">필수</span>' : '<span class="badge badge-draft">선택</span>'}</td>
+                        <td onclick="event.stopPropagation();">
+                          ${ui.canManage() && study.status !== 'LOCKED' ? `
+                            <button class="btn btn-secondary btn-sm" onclick="showEditFormDefinitionModal('${study.id}', '${form.id}')" style="padding: 4px 8px;"><i class="fas fa-edit"></i></button>
+                            <button class="btn btn-secondary btn-sm" onclick="deleteFormDefinition('${study.id}', '${form.id}')" style="padding: 4px 8px;"><i class="fas fa-trash"></i></button>
+                          ` : ''}
+                        </td>
+                      </tr>
+                    `}).join('')}
+                  </tbody>
+                </table>
+              `}
+            </div>
+          </div>
+        </div>
+
+        <!-- 담당자 관리 탭 -->
         ${ui.canManage() ? `
-        <div class="card" id="study-users-section">
-          <div class="card-header">
-            <span class="card-title"><i class="fas fa-user-tie"></i> 담당자 관리 (DM/CRA)</span>
-            <button class="btn btn-primary btn-sm" onclick="showAssignStudyUserModal('${study.id}')"><i class="fas fa-user-plus"></i> 담당자 추가</button>
-          </div>
-          <div class="card-body compact" id="study-users-list">
-            <div class="loading"><div class="spinner"></div><span>담당자 목록 로딩 중...</span></div>
+        <div class="tab-content" id="tab-users">
+          <div class="card" id="study-users-section">
+            <div class="card-header">
+              <span class="card-title">담당자 관리 (DM/CRA)</span>
+              <button class="btn btn-primary btn-sm" onclick="showAssignStudyUserModal('${study.id}')"><i class="fas fa-user-plus"></i> 담당자 추가</button>
+            </div>
+            <div class="card-body compact" id="study-users-list">
+              <div class="loading"><div class="spinner"></div><span>담당자 목록 로딩 중...</span></div>
+            </div>
           </div>
         </div>
         ` : ''}
       `;
 
-      // 담당자 목록 로드
-      if (ui.canManage()) {
-        loadStudyUsers(studyId);
-      }
+      // 탭 전환 함수 등록
+      window.switchStudyTab = function(tabName) {
+        // 모든 탭 버튼 비활성화
+        document.querySelectorAll('#study-tabs .tab-btn').forEach(btn => btn.classList.remove('active'));
+        // 모든 탭 콘텐츠 숨기기
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        // 선택된 탭 활성화
+        document.querySelector(`#study-tabs .tab-btn[data-tab="${tabName}"]`)?.classList.add('active');
+        document.getElementById(`tab-${tabName}`)?.classList.add('active');
+        
+        // 담당자 탭 선택 시 데이터 로드
+        if (tabName === 'users' && ui.canManage()) {
+          loadStudyUsers('${study.id}');
+        }
+      };
+
+      // 담당자 목록 로드 (초기에는 sites 탭이 활성화되므로 바로 로드하지 않음)
+      // 담당자 탭 클릭 시 로드됨
     } catch (error) {
       mainContent.innerHTML = `<div class="empty-state" style="margin-top: 40px;"><i class="fas fa-exclamation-circle" style="color: var(--danger);"></i><h3>Study 로드 실패</h3><button class="btn btn-primary" style="margin-top: 16px;" onclick="navigateTo('dashboard')">대시보드로 돌아가기</button></div>`;
     }

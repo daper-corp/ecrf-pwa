@@ -321,6 +321,55 @@ const htmlTemplate = (title: string, content: string) => `
       .breadcrumb a:hover { text-decoration: underline; }
       .breadcrumb span { color: var(--text-muted); }
       
+      /* ===== Tabs ===== */
+      .tabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 2px solid var(--border);
+        margin-bottom: 20px;
+        overflow-x: auto;
+      }
+      
+      .tab-btn {
+        padding: 12px 20px;
+        border: none;
+        background: transparent;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.2s;
+      }
+      
+      .tab-btn:hover {
+        color: var(--primary);
+        background: var(--bg-secondary);
+      }
+      
+      .tab-btn.active {
+        color: var(--primary);
+        border-bottom-color: var(--primary);
+      }
+      
+      .tab-btn .badge {
+        font-size: 11px;
+        padding: 2px 6px;
+      }
+      
+      .tab-content {
+        display: none;
+      }
+      
+      .tab-content.active {
+        display: block;
+      }
+      
       /* ===== Main Layout ===== */
       .main-container {
         max-width: 1400px;
