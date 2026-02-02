@@ -25,7 +25,7 @@ import notificationRoutes from './routes/notifications';
 import auditRoutes from './routes/audit';
 
 // Application version
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '3.0.0';
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -359,98 +359,155 @@ app.get('/', (c) => {
     </div>
 
     <!-- ===== LOGIN SECTION ===== -->
-    <div id="login-section" class="login-page hidden">
-      <div class="login-container">
+    <div id="login-section" class="login-page-enhanced hidden">
+      <div class="login-background">
+        <div class="login-bg-shape login-bg-shape-1"></div>
+        <div class="login-bg-shape login-bg-shape-2"></div>
+        <div class="login-bg-shape login-bg-shape-3"></div>
+      </div>
+      <div class="login-container animate-scale-in">
         <div class="login-header">
-          <div class="login-logo">
-            <i class="fas fa-heartbeat"></i>
+          <div class="login-logo-enhanced">
+            <div class="login-logo-icon">
+              <i class="fas fa-heartbeat"></i>
+            </div>
+            <div class="login-logo-pulse"></div>
           </div>
-          <h1>eCRF Clinical</h1>
+          <h1 class="gradient-text">eCRF Clinical</h1>
           <p>21 CFR Part 11 Compliant EDC System</p>
         </div>
         
-        <div class="login-card">
-          <div class="compliance-badges">
-            <div class="compliance-badge">
-              <i class="fas fa-shield-alt"></i>
+        <div class="login-card glass-card">
+          <div class="compliance-badges-enhanced">
+            <div class="compliance-badge-enhanced" data-tooltip="FDA 전자기록 규정 준수">
+              <div class="compliance-badge-icon">
+                <i class="fas fa-shield-alt"></i>
+              </div>
               <span>21 CFR Part 11</span>
             </div>
-            <div class="compliance-badge">
-              <i class="fas fa-check-circle"></i>
+            <div class="compliance-badge-enhanced" data-tooltip="임상시험관리기준 준수">
+              <div class="compliance-badge-icon">
+                <i class="fas fa-clipboard-check"></i>
+              </div>
               <span>GCP Compliant</span>
             </div>
-            <div class="compliance-badge">
-              <i class="fas fa-lock"></i>
+            <div class="compliance-badge-enhanced" data-tooltip="전자 서명 감사 추적">
+              <div class="compliance-badge-icon">
+                <i class="fas fa-fingerprint"></i>
+              </div>
               <span>Audit Trail</span>
             </div>
           </div>
           
-          <form id="login-form">
-            <div class="form-group">
-              <label class="form-label">
-                <i class="fas fa-envelope"></i>
-                이메일 <span class="required">*</span>
+          <form id="login-form" class="login-form-enhanced">
+            <div class="form-group-floating">
+              <input type="email" id="login-email" class="form-input" placeholder=" " required autocomplete="email">
+              <label class="form-label-floating">
+                <i class="fas fa-envelope"></i> 이메일
               </label>
-              <input type="email" id="login-email" class="form-input" placeholder="user@example.com" required autocomplete="email">
             </div>
             
-            <div class="form-group">
-              <label class="form-label">
-                <i class="fas fa-key"></i>
-                비밀번호 <span class="required">*</span>
+            <div class="form-group-floating">
+              <input type="password" id="login-password" class="form-input" placeholder=" " required autocomplete="current-password">
+              <label class="form-label-floating">
+                <i class="fas fa-lock"></i> 비밀번호
               </label>
-              <input type="password" id="login-password" class="form-input" placeholder="비밀번호 입력" required autocomplete="current-password">
+              <button type="button" class="password-toggle" onclick="togglePasswordVisibility()">
+                <i class="fas fa-eye" id="password-toggle-icon"></i>
+              </button>
             </div>
             
-            <div id="login-2fa-section" class="form-group hidden">
+            <div id="login-2fa-section" class="form-group hidden animate-slide-up">
               <label class="form-label">
                 <i class="fas fa-shield-alt"></i>
                 2FA 인증 코드 <span class="required">*</span>
               </label>
-              <input type="text" id="login-2fa-code" class="form-input twofa-code-input" placeholder="000000" maxlength="6">
-              <div class="form-hint">인증 앱에서 6자리 코드를 입력하세요</div>
+              <div class="twofa-input-group">
+                <input type="text" id="login-2fa-code" class="form-input twofa-code-input" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*">
+              </div>
+              <div class="form-hint"><i class="fas fa-info-circle"></i> 인증 앱에서 6자리 코드를 입력하세요</div>
             </div>
             
-            <div id="login-error" class="alert-error hidden mb-4">
-              <i class="fas fa-exclamation-circle"></i>
-              <span id="login-error-text"></span>
+            <div id="login-error" class="alert-banner alert-banner-error hidden animate-shake">
+              <i class="fas fa-exclamation-circle alert-banner-icon"></i>
+              <div class="alert-banner-content">
+                <span id="login-error-text"></span>
+              </div>
             </div>
             
-            <button type="submit" class="btn btn-primary btn-lg w-full">
-              <i class="fas fa-sign-in-alt"></i>
-              로그인
+            <button type="submit" class="btn btn-gradient btn-lg w-full ripple" id="login-btn">
+              <span class="btn-text"><i class="fas fa-sign-in-alt"></i> 로그인</span>
+              <span class="btn-loading hidden"><i class="fas fa-spinner fa-spin"></i> 인증 중...</span>
             </button>
           </form>
           
-          <div class="test-accounts">
-            <h4><i class="fas fa-users"></i> 테스트 계정</h4>
-            <div class="test-accounts-grid">
-              <div class="test-account" onclick="fillTestAccount('admin@ecrf.local')">
-                <div class="test-account-role"><i class="fas fa-user-shield"></i> 관리자</div>
-                <div class="test-account-email">admin@ecrf.local</div>
+          <div class="login-divider">
+            <span>또는 테스트 계정으로 시작</span>
+          </div>
+          
+          <div class="test-accounts-enhanced">
+            <div class="test-accounts-grid stagger-animation">
+              <div class="test-account-enhanced hover-lift" onclick="fillTestAccount('admin@ecrf.local')">
+                <div class="test-account-avatar" style="background: linear-gradient(135deg, #e91e63 0%, #9c27b0 100%);">
+                  <i class="fas fa-user-shield"></i>
+                </div>
+                <div class="test-account-info">
+                  <div class="test-account-role">관리자</div>
+                  <div class="test-account-email">admin@ecrf.local</div>
+                </div>
+                <i class="fas fa-chevron-right test-account-arrow"></i>
               </div>
-              <div class="test-account" onclick="fillTestAccount('pi@hospital1.local')">
-                <div class="test-account-role"><i class="fas fa-user-md"></i> 연구책임자</div>
-                <div class="test-account-email">pi@hospital1.local</div>
+              <div class="test-account-enhanced hover-lift" onclick="fillTestAccount('pi@hospital1.local')">
+                <div class="test-account-avatar" style="background: linear-gradient(135deg, #2196f3 0%, #00bcd4 100%);">
+                  <i class="fas fa-user-md"></i>
+                </div>
+                <div class="test-account-info">
+                  <div class="test-account-role">연구책임자 (PI)</div>
+                  <div class="test-account-email">pi@hospital1.local</div>
+                </div>
+                <i class="fas fa-chevron-right test-account-arrow"></i>
               </div>
-              <div class="test-account" onclick="fillTestAccount('crc@hospital1.local')">
-                <div class="test-account-role"><i class="fas fa-user-nurse"></i> CRC</div>
-                <div class="test-account-email">crc@hospital1.local</div>
+              <div class="test-account-enhanced hover-lift" onclick="fillTestAccount('crc@hospital1.local')">
+                <div class="test-account-avatar" style="background: linear-gradient(135deg, #4caf50 0%, #8bc34a 100%);">
+                  <i class="fas fa-user-nurse"></i>
+                </div>
+                <div class="test-account-info">
+                  <div class="test-account-role">연구 코디네이터</div>
+                  <div class="test-account-email">crc@hospital1.local</div>
+                </div>
+                <i class="fas fa-chevron-right test-account-arrow"></i>
               </div>
-              <div class="test-account" onclick="fillTestAccount('cra@sponsor.local')">
-                <div class="test-account-role"><i class="fas fa-user-tie"></i> 모니터</div>
-                <div class="test-account-email">cra@sponsor.local</div>
+              <div class="test-account-enhanced hover-lift" onclick="fillTestAccount('cra@sponsor.local')">
+                <div class="test-account-avatar" style="background: linear-gradient(135deg, #ff9800 0%, #ffc107 100%);">
+                  <i class="fas fa-user-tie"></i>
+                </div>
+                <div class="test-account-info">
+                  <div class="test-account-role">임상 모니터</div>
+                  <div class="test-account-email">cra@sponsor.local</div>
+                </div>
+                <i class="fas fa-chevron-right test-account-arrow"></i>
               </div>
             </div>
-            <p class="text-center mt-4 text-muted" style="font-size: var(--text-xs);">
-              비밀번호: <code class="password-code">Test1234!</code>
-            </p>
+            <div class="test-password-hint">
+              <i class="fas fa-key"></i>
+              <span>공통 비밀번호:</span>
+              <code class="password-code" onclick="copyPassword()">Test1234!</code>
+              <span class="copy-hint" id="copy-hint">복사됨!</span>
+            </div>
           </div>
         </div>
         
-        <div class="login-footer">
+        <div class="login-footer-enhanced">
+          <div class="login-footer-links">
+            <a href="#" onclick="showPrivacyPolicy(event)"><i class="fas fa-shield-alt"></i> 개인정보처리방침</a>
+            <span class="footer-divider">|</span>
+            <a href="#" onclick="showTerms(event)"><i class="fas fa-file-contract"></i> 이용약관</a>
+          </div>
           <p>© 2026 eCRF Clinical Data Management System</p>
-          <p style="margin-top: 4px; opacity: 0.7;">Version 2.0.0 | Powered by Cloudflare</p>
+          <p class="version-info">
+            <span class="version-badge">v3.0.0</span>
+            <span class="powered-by">Powered by Cloudflare Workers</span>
+          </p>
         </div>
       </div>
     </div>
@@ -473,14 +530,55 @@ app.get('/', (c) => {
     <!-- ===== MODAL CONTAINER ===== -->
     <div id="modal-container"></div>
     
-    <!-- ===== Test Account Fill Script ===== -->
+    <!-- ===== Enhanced Login Scripts ===== -->
     <script>
       function fillTestAccount(email) {
         const emailInput = document.getElementById('login-email');
         const passwordInput = document.getElementById('login-password');
-        if (emailInput) emailInput.value = email;
-        if (passwordInput) passwordInput.value = 'Test1234!';
+        if (emailInput) {
+          emailInput.value = email;
+          emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        if (passwordInput) {
+          passwordInput.value = 'Test1234!';
+          passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
         emailInput?.focus();
+        
+        // Visual feedback
+        const accounts = document.querySelectorAll('.test-account-enhanced');
+        accounts.forEach(acc => acc.style.background = '');
+        event.currentTarget.style.background = 'var(--primary-50)';
+      }
+      
+      function togglePasswordVisibility() {
+        const passwordInput = document.getElementById('login-password');
+        const toggleIcon = document.getElementById('password-toggle-icon');
+        if (passwordInput.type === 'password') {
+          passwordInput.type = 'text';
+          toggleIcon.className = 'fas fa-eye-slash';
+        } else {
+          passwordInput.type = 'password';
+          toggleIcon.className = 'fas fa-eye';
+        }
+      }
+      
+      function copyPassword() {
+        navigator.clipboard.writeText('Test1234!').then(() => {
+          const hint = document.getElementById('copy-hint');
+          hint.classList.add('show');
+          setTimeout(() => hint.classList.remove('show'), 2000);
+        });
+      }
+      
+      function showPrivacyPolicy(e) {
+        e.preventDefault();
+        alert('개인정보처리방침 페이지는 준비 중입니다.');
+      }
+      
+      function showTerms(e) {
+        e.preventDefault();
+        alert('이용약관 페이지는 준비 중입니다.');
       }
     </script>
   `;
