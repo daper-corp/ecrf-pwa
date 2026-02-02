@@ -99,7 +99,8 @@ export const createRateLimiter = (config: RateLimitConfig = defaultRateLimitConf
       record.count++;
       
       if (record.count > config.max) {
-        c.header('Retry-After', String(Math.ceil((record.resetTime - now) / 1000)));
+        const retryAfterSeconds = Math.ceil((record.resetTime - now) / 1000);
+        c.header('Retry-After', String(retryAfterSeconds));
         c.header('X-RateLimit-Limit', String(config.max));
         c.header('X-RateLimit-Remaining', '0');
         c.header('X-RateLimit-Reset', String(record.resetTime));
@@ -107,7 +108,9 @@ export const createRateLimiter = (config: RateLimitConfig = defaultRateLimitConf
         return c.json({
           success: false,
           error: config.message || 'Rate limit exceeded',
-          code: 'RATE_LIMIT_EXCEEDED'
+          code: 'RATE_LIMIT_EXCEEDED',
+          retry_after_seconds: retryAfterSeconds,
+          request_id: c.get('requestId')
         }, 429);
       }
     }

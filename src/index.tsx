@@ -1232,8 +1232,22 @@ app.get('/', (c) => {
   return c.html(htmlTemplate('홈', content));
 });
 
-// 404 페이지
+// 404 페이지 - API와 웹 페이지 구분 처리
 app.notFound((c) => {
+  const path = c.req.path;
+  
+  // API 엔드포인트는 JSON 응답
+  if (path.startsWith('/api/')) {
+    return c.json({
+      success: false,
+      error: 'Endpoint not found',
+      code: 'NOT_FOUND',
+      path: path,
+      request_id: c.get('requestId')
+    }, 404);
+  }
+  
+  // 웹 페이지는 HTML 응답
   return c.html(htmlTemplate('페이지를 찾을 수 없음', `
     <div class="main-container">
       <div class="empty-state" style="margin-top: 80px;">
@@ -1251,10 +1265,32 @@ app.notFound((c) => {
 // 에러 핸들러
 app.onError((err, c) => {
   console.error('Server error:', err);
-  return c.json({
-    success: false,
-    error: '서버 오류가 발생했습니다.',
-  }, 500);
+  
+  const path = c.req.path;
+  
+  // API 엔드포인트는 JSON 응답
+  if (path.startsWith('/api/')) {
+    return c.json({
+      success: false,
+      error: '서버 오류가 발생했습니다.',
+      code: 'INTERNAL_SERVER_ERROR',
+      request_id: c.get('requestId')
+    }, 500);
+  }
+  
+  // 웹 페이지는 HTML 응답
+  return c.html(htmlTemplate('오류 발생', `
+    <div class="main-container">
+      <div class="empty-state" style="margin-top: 80px;">
+        <i class="fas fa-exclamation-triangle"></i>
+        <h3>500 - 서버 오류</h3>
+        <p>서버에서 오류가 발생했습니다. 잠시 후 다시 시도해주세요.</p>
+        <a href="/" class="btn btn-primary" style="margin-top: 16px;">
+          <i class="fas fa-home"></i> 홈으로 돌아가기
+        </a>
+      </div>
+    </div>
+  `), 500);
 });
 
 export default app;

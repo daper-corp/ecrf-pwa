@@ -16,11 +16,14 @@ const auth = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 auth.post('/login', async (c) => {
   try {
     const body = await c.req.json();
-    const { email, password } = body;
+    let { email, password } = body;
 
     if (!email || !password) {
       return c.json({ success: false, error: '이메일과 비밀번호를 입력해주세요.' }, 400);
     }
+
+    // 이메일 정규화: 소문자 변환 및 공백 제거
+    email = String(email).trim().toLowerCase();
 
     const { ipAddress, userAgent } = getClientInfo(c);
     const result = await login(c.env.DB, email, password, ipAddress ?? undefined, userAgent ?? undefined);
@@ -145,11 +148,14 @@ auth.post('/change-password', requireAuth, async (c) => {
 auth.post('/users', requireAuth, requireRole('ADMIN'), async (c) => {
   try {
     const body = await c.req.json();
-    const { email, password, name, role } = body;
+    let { email, password, name, role } = body;
 
     if (!email || !password || !name || !role) {
       return c.json({ success: false, error: '모든 필드를 입력해주세요.' }, 400);
     }
+
+    // 이메일 정규화: 소문자 변환 및 공백 제거
+    email = String(email).trim().toLowerCase();
 
     const validRoles = ['ADMIN', 'PI', 'SUB_INV', 'CRC', 'CRA', 'DM'];
     if (!validRoles.includes(role)) {
