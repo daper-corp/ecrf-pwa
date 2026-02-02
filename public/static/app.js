@@ -909,15 +909,15 @@
             </div>
             <div class="dropdown-menu" id="user-dropdown">
               <div style="padding: 12px 16px; border-bottom: 1px solid var(--border-light);">
-                <div style="font-weight: 500; margin-bottom: 2px;">${sanitizeHTML(state.user.name)}</div>
-                <div style="font-size: 12px; color: var(--text-muted);">${sanitizeHTML(state.user.email)}</div>
+                <div style="font-weight: 500; margin-bottom: 2px;">${state.user.name}</div>
+                <div style="font-size: 12px; color: var(--text-muted);">${state.user.email}</div>
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">${ui.getRoleName(state.user.role)}</div>
-              </div>
-              <div class="dropdown-item" onclick="navigateTo('mypage'); closeUserMenu();">
-                <i class="fas fa-user-circle"></i><span>내 정보</span>
               </div>
               <div class="dropdown-item" onclick="showSettings(); closeUserMenu();">
                 <i class="fas fa-cog"></i><span>설정</span>
+              </div>
+              <div class="dropdown-item" onclick="show2FASettings(); closeUserMenu();">
+                <i class="fas fa-shield-alt"></i><span>2단계 인증</span>
               </div>
               ${state.user.role === 'ADMIN' ? `
               <div class="dropdown-item" onclick="showUserManagement(); closeUserMenu();">
@@ -1005,9 +1005,6 @@
         break;
       case 'reports':
         loadReports();
-        break;
-      case 'mypage':
-        loadMyPage();
         break;
       default:
         loadDashboard();
@@ -1122,163 +1119,88 @@
     const mainContent = document.getElementById('main-content');
     if (!mainContent) return;
 
-    const currentTime = new Date();
-    const greeting = currentTime.getHours() < 12 ? '좋은 아침이에요' : currentTime.getHours() < 18 ? '좋은 오후에요' : '좋은 저녁이에요';
-
     mainContent.innerHTML = `
-      <!-- Enhanced Welcome Banner -->
-      <div class="welcome-banner-enhanced animate-slide-up">
-        <div class="welcome-bg-pattern"></div>
-        <div class="welcome-content">
-          <div class="welcome-info">
-            <div class="welcome-avatar-enhanced">
-              <span>${ui.getInitials(state.user?.name)}</span>
-              <div class="welcome-avatar-status"></div>
-            </div>
-            <div class="welcome-text">
-              <span class="welcome-greeting">${greeting},</span>
-              <h2>${state.user?.name || '사용자'}님</h2>
-              <p><i class="fas fa-user-md"></i> ${ui.getRoleName(state.user?.role)} <span class="separator">·</span> <i class="fas fa-clock"></i> 최근 접속: ${new Date().toLocaleDateString('ko-KR')}</p>
-            </div>
+      <div class="welcome-banner">
+        <div class="welcome-info">
+          <div class="welcome-avatar">${ui.getInitials(state.user?.name)}</div>
+          <div class="welcome-text">
+            <h2>안녕하세요, ${state.user?.name || '사용자'}님</h2>
+            <p>${ui.getRoleName(state.user?.role)} · 마지막 접속: ${new Date().toLocaleDateString('ko-KR')}</p>
           </div>
-          <div class="welcome-meta">
-            <div class="welcome-date">
-              <i class="fas fa-calendar-alt"></i>
-              <span>${new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</span>
-            </div>
-            <button class="btn btn-secondary" onclick="navigateTo('mypage')" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white;">
-              <i class="fas fa-user-cog"></i> 마이페이지
-            </button>
-          </div>
+        </div>
+        <div class="welcome-meta">
+          <div>${new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</div>
         </div>
       </div>
 
-      <!-- Enhanced Stats Grid -->
-      <div class="stats-grid stagger-animation">
-        <div class="stat-card-animated hover-lift" onclick="navigateTo('studies')">
-          <div class="stat-icon blue"><i class="fas fa-flask"></i></div>
-          <div class="stat-label">임상시험</div>
-          <div class="stat-value-animated"><span id="stat-studies" class="counter-animated">-</span></div>
-          <div class="stat-change positive"><i class="fas fa-arrow-up"></i> 진행중</div>
-        </div>
-        <div class="stat-card-animated hover-lift">
-          <div class="stat-icon green"><i class="fas fa-users"></i></div>
-          <div class="stat-label">피험자</div>
-          <div class="stat-value-animated"><span id="stat-subjects" class="counter-animated">-</span></div>
-          <div class="stat-change positive"><i class="fas fa-user-plus"></i> 등록됨</div>
-        </div>
-        <div class="stat-card-animated hover-lift" style="cursor:pointer;" onclick="navigateTo('queries')">
-          <div class="stat-icon orange"><i class="fas fa-comment-dots"></i></div>
-          <div class="stat-label">미해결 Query</div>
-          <div class="stat-value-animated"><span id="stat-queries" class="counter-animated">-</span></div>
-          <div class="stat-change"><i class="fas fa-exclamation-circle"></i> 응답 대기</div>
-        </div>
-        <div class="stat-card-animated hover-lift">
-          <div class="stat-icon purple"><i class="fas fa-signature"></i></div>
-          <div class="stat-label">서명 대기</div>
-          <div class="stat-value-animated"><span id="stat-signatures" class="counter-animated">-</span></div>
-          <div class="stat-change"><i class="fas fa-pen-nib"></i> 승인 필요</div>
-        </div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">임상시험</div><div class="stat-value" id="stat-studies">-</div></div>
+        <div class="stat-card"><div class="stat-label">피험자</div><div class="stat-value" id="stat-subjects">-</div></div>
+        <div class="stat-card" style="cursor:pointer;" onclick="navigateTo('queries')"><div class="stat-label">미해결 Query</div><div class="stat-value" id="stat-queries">-</div></div>
+        <div class="stat-card"><div class="stat-label">서명 대기</div><div class="stat-value" id="stat-signatures">-</div></div>
       </div>
 
-      <!-- Enhanced Quick Actions -->
-      <div class="card glass-card" style="margin-bottom: var(--space-5);">
-        <div class="card-header glass-card-header">
-          <span class="card-title"><i class="fas fa-bolt"></i> 빠른 작업</span>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">빠른 작업</span>
         </div>
         <div class="card-body">
-          <div class="quick-actions-enhanced">
-            <div class="quick-action-enhanced hover-lift ripple" onclick="showSubjectSearch()">
-              <div class="quick-action-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                <i class="fas fa-search"></i>
-              </div>
-              <div class="quick-action-content">
-                <span class="quick-action-title">피험자 검색</span>
-                <span class="quick-action-desc">ID로 빠르게 찾기</span>
-              </div>
-              <i class="fas fa-chevron-right quick-action-arrow"></i>
-            </div>
-            <div class="quick-action-enhanced hover-lift ripple" onclick="navigateTo('queries')">
-              <div class="quick-action-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
-                <i class="fas fa-comment-medical"></i>
-              </div>
-              <div class="quick-action-content">
-                <span class="quick-action-title">Query 관리</span>
-                <span class="quick-action-desc">미결 질의 응답</span>
-              </div>
-              <i class="fas fa-chevron-right quick-action-arrow"></i>
-            </div>
-            <div class="quick-action-enhanced hover-lift ripple" onclick="navigateTo('reports')">
-              <div class="quick-action-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
-                <i class="fas fa-chart-bar"></i>
-              </div>
-              <div class="quick-action-content">
-                <span class="quick-action-title">리포트</span>
-                <span class="quick-action-desc">통계 및 분석</span>
-              </div>
-              <i class="fas fa-chevron-right quick-action-arrow"></i>
-            </div>
-            <div class="quick-action-enhanced hover-lift ripple" onclick="showExportOptions()">
-              <div class="quick-action-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
-                <i class="fas fa-file-export"></i>
-              </div>
-              <div class="quick-action-content">
-                <span class="quick-action-title">데이터 Export</span>
-                <span class="quick-action-desc">CDISC ODM/SDTM</span>
-              </div>
-              <i class="fas fa-chevron-right quick-action-arrow"></i>
-            </div>
+          <div class="quick-actions">
+            <div class="quick-action" onclick="showSubjectSearch()"><i class="fas fa-search"></i><span>피험자 검색</span></div>
+            <div class="quick-action" onclick="navigateTo('queries')"><i class="fas fa-comment-medical"></i><span>Query 관리</span></div>
+            <div class="quick-action" onclick="navigateTo('reports')"><i class="fas fa-chart-bar"></i><span>리포트</span></div>
+            <div class="quick-action" onclick="showExportOptions()"><i class="fas fa-file-export"></i><span>데이터 Export</span></div>
           </div>
         </div>
       </div>
 
       <!-- Dashboard Charts Section -->
-      <div class="charts-grid">
-        <div class="card hover-lift">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; margin-bottom: 20px;">
+        <div class="card">
           <div class="card-header">
-            <span class="card-title"><i class="fas fa-chart-pie"></i> 피험자 등록 현황</span>
+            <span class="card-title"><i class="fas fa-chart-pie" style="margin-right: 8px;"></i>피험자 등록 현황</span>
           </div>
-          <div class="card-body chart-container">
+          <div class="card-body" style="height: 250px;">
             <canvas id="chart-enrollment"></canvas>
           </div>
         </div>
-        <div class="card hover-lift">
+        <div class="card">
           <div class="card-header">
-            <span class="card-title"><i class="fas fa-chart-bar"></i> Query 현황</span>
+            <span class="card-title"><i class="fas fa-chart-bar" style="margin-right: 8px;"></i>Query 현황</span>
           </div>
-          <div class="card-body chart-container">
+          <div class="card-body" style="height: 250px;">
             <canvas id="chart-queries"></canvas>
           </div>
         </div>
       </div>
       
-      <div class="charts-grid" style="margin-top: var(--space-5);">
-        <div class="card hover-lift">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; margin-bottom: 20px;">
+        <div class="card">
           <div class="card-header">
-            <span class="card-title"><i class="fas fa-chart-line"></i> 등록 추이 (최근 7일)</span>
+            <span class="card-title"><i class="fas fa-chart-line" style="margin-right: 8px;"></i>등록 추이 (최근 7일)</span>
           </div>
-          <div class="card-body chart-container-sm">
+          <div class="card-body" style="height: 200px;">
             <canvas id="chart-trend"></canvas>
           </div>
         </div>
-        <div class="card hover-lift">
+        <div class="card">
           <div class="card-header">
-            <span class="card-title"><i class="fas fa-tasks"></i> CRF 완료율</span>
+            <span class="card-title"><i class="fas fa-tasks" style="margin-right: 8px;"></i>CRF 완료율</span>
           </div>
-          <div class="card-body chart-container-sm">
+          <div class="card-body" style="height: 200px;">
             <canvas id="chart-crf"></canvas>
           </div>
         </div>
       </div>
 
-      <!-- Recent Studies -->
-      <div class="card hover-lift" style="margin-top: var(--space-5);">
+      <!-- Recent Studies (최근 3개만 표시) -->
+      <div class="card">
         <div class="card-header">
-          <span class="card-title"><i class="fas fa-clipboard-list"></i> 최근 임상시험</span>
+          <span class="card-title">최근 임상시험</span>
           <button class="btn btn-secondary btn-sm" onclick="navigateTo('studies')">전체 보기 <i class="fas fa-arrow-right"></i></button>
         </div>
         <div class="card-body compact" id="recent-studies-list">
-          <div class="loading"><div class="spinner"></div><span class="loading-text">데이터를 불러오는 중...</span></div>
+          <div class="loading"><div class="spinner"></div><span>데이터를 불러오는 중...</span></div>
         </div>
       </div>
     `;
@@ -6266,596 +6188,6 @@
     }
   }
   window.updateUser = updateUser;
-
-  // =====================================================
-  // MY PAGE (내 정보)
-  // =====================================================
-  async function loadMyPage() {
-    const mainContent = document.getElementById('main-content');
-    if (!mainContent) return;
-    
-    mainContent.innerHTML = `
-      <div class="loading">
-        <div class="spinner"></div>
-        <span class="loading-text">내 정보를 불러오는 중...</span>
-      </div>
-    `;
-    
-    try {
-      // 최신 사용자 정보 조회
-      const response = await api.get('/auth/me');
-      const userData = response.data?.user || state.user;
-      const userSites = response.data?.sites || [];
-      
-      // state 업데이트
-      if (userData) {
-        state.user = { ...state.user, ...userData };
-        localStorage.setItem('ecrf_user', JSON.stringify(state.user));
-      }
-      
-      const is2FAEnabled = state.user?.two_factor_enabled || userData?.two_factor_enabled;
-      
-      mainContent.innerHTML = `
-        <div class="page-header">
-          <div class="page-title-section">
-            <h1 class="page-title"><i class="fas fa-user-circle" style="color: var(--primary-500); margin-right: 8px;"></i>내 정보</h1>
-            <p class="page-subtitle">프로필 정보를 확인하고 보안 설정을 관리합니다.</p>
-          </div>
-        </div>
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
-          <!-- 프로필 정보 카드 -->
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title"><i class="fas fa-id-card"></i> 프로필 정보</h3>
-            </div>
-            <div class="card-body">
-              <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border-light);">
-                <div style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, var(--primary-500) 0%, var(--primary-700) 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 28px; font-weight: 600;">
-                  ${ui.getInitials(state.user.name)}
-                </div>
-                <div>
-                  <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 4px;">${sanitizeHTML(state.user.name)}</h2>
-                  <p style="color: var(--text-muted); font-size: 14px;">${sanitizeHTML(state.user.email)}</p>
-                  <span class="badge badge-${state.user.status === 'ACTIVE' ? 'active' : 'inactive'}" style="margin-top: 8px;">
-                    ${state.user.status === 'ACTIVE' ? '활성' : '비활성'}
-                  </span>
-                </div>
-              </div>
-              
-              <div style="display: grid; gap: 16px;">
-                <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border-light);">
-                  <span style="color: var(--text-muted); font-size: 13px;"><i class="fas fa-user-tag" style="width: 20px;"></i> 역할</span>
-                  <span style="font-weight: 500;">${ui.getRoleName(state.user.role)}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border-light);">
-                  <span style="color: var(--text-muted); font-size: 13px;"><i class="fas fa-calendar-alt" style="width: 20px;"></i> 계정 생성일</span>
-                  <span style="font-weight: 500;">${ui.formatDate(state.user.created_at)}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border-light);">
-                  <span style="color: var(--text-muted); font-size: 13px;"><i class="fas fa-clock" style="width: 20px;"></i> 최근 로그인</span>
-                  <span style="font-weight: 500;">${ui.formatDateTime(state.user.last_login_at)}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; padding: 12px 0;">
-                  <span style="color: var(--text-muted); font-size: 13px;"><i class="fas fa-id-badge" style="width: 20px;"></i> 사용자 ID</span>
-                  <span style="font-weight: 500; font-family: monospace; font-size: 12px; color: var(--text-muted);">${sanitizeHTML(state.user.id)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <!-- 보안 설정 카드 -->
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title"><i class="fas fa-shield-alt"></i> 보안 설정</h3>
-            </div>
-            <div class="card-body">
-              <!-- 비밀번호 변경 -->
-              <div style="padding: 16px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 16px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <div>
-                    <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 4px;"><i class="fas fa-key" style="color: var(--primary-500); margin-right: 8px;"></i>비밀번호</h4>
-                    <p style="font-size: 12px; color: var(--text-muted);">주기적으로 비밀번호를 변경하여 계정을 보호하세요.</p>
-                  </div>
-                  <button class="btn btn-secondary btn-sm" onclick="showChangePasswordModal()">
-                    <i class="fas fa-edit"></i> 변경
-                  </button>
-                </div>
-              </div>
-              
-              <!-- 2FA 설정 -->
-              <div style="padding: 16px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 16px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <div>
-                    <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">
-                      <i class="fas fa-mobile-alt" style="color: ${is2FAEnabled ? 'var(--success-main)' : 'var(--text-muted)'}; margin-right: 8px;"></i>
-                      2단계 인증 (2FA)
-                    </h4>
-                    <p style="font-size: 12px; color: var(--text-muted);">
-                      ${is2FAEnabled ? '활성화됨 - 로그인 시 인증 앱에서 코드를 입력해야 합니다.' : '비활성화됨 - 계정 보안을 위해 활성화를 권장합니다.'}
-                    </p>
-                  </div>
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <span class="badge ${is2FAEnabled ? 'badge-success' : 'badge-inactive'}">
-                      ${is2FAEnabled ? '활성화' : '비활성화'}
-                    </span>
-                    <button class="btn ${is2FAEnabled ? 'btn-secondary' : 'btn-primary'} btn-sm" onclick="show2FASettingsPage()">
-                      ${is2FAEnabled ? '관리' : '활성화'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- 세션 정보 -->
-              <div style="padding: 16px; background: var(--bg-secondary); border-radius: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <div>
-                    <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 4px;"><i class="fas fa-history" style="color: var(--info-main); margin-right: 8px;"></i>세션 정보</h4>
-                    <p style="font-size: 12px; color: var(--text-muted);">현재 활성 세션을 관리합니다.</p>
-                  </div>
-                  <button class="btn btn-danger btn-sm" onclick="logoutAllSessions()">
-                    <i class="fas fa-sign-out-alt"></i> 모든 세션 종료
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- 할당된 Site 목록 -->
-        ${userSites.length > 0 ? `
-        <div class="card" style="margin-top: 24px;">
-          <div class="card-header">
-            <h3 class="card-title"><i class="fas fa-hospital"></i> 할당된 연구기관 (${userSites.length})</h3>
-          </div>
-          <div class="card-body compact">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>기관번호</th>
-                  <th>기관명</th>
-                  <th>Study</th>
-                  <th>주담당자</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${userSites.map(site => `
-                  <tr class="clickable" onclick="navigateTo('site', {siteId: '${site.id}'})">
-                    <td><span style="font-weight: 500;">${sanitizeHTML(site.site_number)}</span></td>
-                    <td>${sanitizeHTML(site.name)}</td>
-                    <td><span style="color: var(--text-muted);">${sanitizeHTML(site.study_id)}</span></td>
-                    <td>
-                      ${site.is_primary ? '<span class="badge badge-active"><i class="fas fa-star"></i> 주담당자</span>' : '<span class="badge badge-inactive">담당자</span>'}
-                    </td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        ` : ''}
-        
-        <!-- 활동 로그 (최근) -->
-        <div class="card" style="margin-top: 24px;">
-          <div class="card-header">
-            <h3 class="card-title"><i class="fas fa-list-alt"></i> 최근 활동</h3>
-            <button class="btn btn-secondary btn-sm" onclick="loadMyActivityLog()">
-              <i class="fas fa-sync-alt"></i> 새로고침
-            </button>
-          </div>
-          <div class="card-body" id="my-activity-log">
-            <div class="loading" style="padding: 24px;">
-              <div class="spinner"></div>
-              <span>활동 로그를 불러오는 중...</span>
-            </div>
-          </div>
-        </div>
-      `;
-      
-      // 활동 로그 로드
-      loadMyActivityLog();
-      
-    } catch (error) {
-      console.error('Failed to load my page:', error);
-      mainContent.innerHTML = `
-        <div class="empty-state" style="margin-top: 40px;">
-          <div class="empty-state-icon"><i class="fas fa-exclamation-circle"></i></div>
-          <h3>내 정보를 불러올 수 없습니다</h3>
-          <p>${error.error || '잠시 후 다시 시도해주세요.'}</p>
-          <button class="btn btn-primary" style="margin-top: 16px;" onclick="loadMyPage()">
-            <i class="fas fa-redo"></i> 다시 시도
-          </button>
-        </div>
-      `;
-    }
-  }
-  window.loadMyPage = loadMyPage;
-  
-  // 내 활동 로그 로드
-  async function loadMyActivityLog() {
-    const container = document.getElementById('my-activity-log');
-    if (!container) return;
-    
-    try {
-      const response = await api.get(`/audit?userId=${state.user.id}&limit=10`);
-      const logs = response.data || [];
-      
-      if (logs.length === 0) {
-        container.innerHTML = `
-          <div class="empty-state" style="padding: 24px;">
-            <i class="fas fa-inbox" style="font-size: 32px; opacity: 0.5;"></i>
-            <p style="margin-top: 12px;">최근 활동 기록이 없습니다.</p>
-          </div>
-        `;
-        return;
-      }
-      
-      container.innerHTML = `
-        <div style="display: flex; flex-direction: column; gap: 12px;">
-          ${logs.map(log => `
-            <div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
-              <div style="width: 36px; height: 36px; border-radius: 8px; background: ${getActivityIconBg(log.action)}; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                <i class="${getActivityIcon(log.action)}" style="color: ${getActivityIconColor(log.action)}; font-size: 14px;"></i>
-              </div>
-              <div style="flex: 1; min-width: 0;">
-                <div style="font-size: 13px; font-weight: 500; margin-bottom: 2px;">${sanitizeHTML(getActivityDescription(log))}</div>
-                <div style="font-size: 11px; color: var(--text-muted);">
-                  <i class="fas fa-clock"></i> ${ui.formatDateTime(log.created_at)}
-                  ${log.ip_address ? ` • <i class="fas fa-globe"></i> ${sanitizeHTML(log.ip_address)}` : ''}
-                </div>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      `;
-    } catch (error) {
-      container.innerHTML = `
-        <div class="empty-state" style="padding: 24px;">
-          <p style="color: var(--error-main);">활동 로그를 불러올 수 없습니다.</p>
-        </div>
-      `;
-    }
-  }
-  window.loadMyActivityLog = loadMyActivityLog;
-  
-  function getActivityIcon(action) {
-    const icons = {
-      'LOGIN': 'fas fa-sign-in-alt',
-      'LOGOUT': 'fas fa-sign-out-alt',
-      'CREATE': 'fas fa-plus',
-      'UPDATE': 'fas fa-edit',
-      'DELETE': 'fas fa-trash',
-      'VIEW': 'fas fa-eye',
-      'SIGN': 'fas fa-signature',
-      'QUERY_CREATE': 'fas fa-comment-medical',
-      'QUERY_RESPOND': 'fas fa-reply',
-      'EXPORT': 'fas fa-download',
-    };
-    return icons[action] || 'fas fa-circle';
-  }
-  
-  function getActivityIconBg(action) {
-    const colors = {
-      'LOGIN': 'var(--success-light)',
-      'LOGOUT': 'var(--gray-200)',
-      'CREATE': 'var(--info-light)',
-      'UPDATE': 'var(--warning-light)',
-      'DELETE': 'var(--error-light)',
-      'SIGN': '#f3e5f5',
-    };
-    return colors[action] || 'var(--gray-100)';
-  }
-  
-  function getActivityIconColor(action) {
-    const colors = {
-      'LOGIN': 'var(--success-main)',
-      'LOGOUT': 'var(--gray-600)',
-      'CREATE': 'var(--info-main)',
-      'UPDATE': 'var(--warning-main)',
-      'DELETE': 'var(--error-main)',
-      'SIGN': '#7b1fa2',
-    };
-    return colors[action] || 'var(--gray-500)';
-  }
-  
-  function getActivityDescription(log) {
-    const descriptions = {
-      'LOGIN': '로그인',
-      'LOGOUT': '로그아웃',
-      'CREATE': `${log.entity_type || '항목'} 생성`,
-      'UPDATE': `${log.entity_type || '항목'} 수정`,
-      'DELETE': `${log.entity_type || '항목'} 삭제`,
-      'VIEW': `${log.entity_type || '항목'} 조회`,
-      'SIGN': 'CRF 서명',
-      'QUERY_CREATE': 'Query 생성',
-      'QUERY_RESPOND': 'Query 응답',
-      'EXPORT': '데이터 내보내기',
-    };
-    return descriptions[log.action] || log.action;
-  }
-  
-  // 비밀번호 변경 모달
-  function showChangePasswordModal() {
-    showModal('비밀번호 변경', `
-      <form id="change-password-form">
-        <div class="form-group">
-          <label class="form-label">
-            <i class="fas fa-lock"></i> 현재 비밀번호 <span class="required">*</span>
-          </label>
-          <input type="password" id="current-password" class="form-input" placeholder="현재 비밀번호 입력" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">
-            <i class="fas fa-key"></i> 새 비밀번호 <span class="required">*</span>
-          </label>
-          <input type="password" id="new-password" class="form-input" placeholder="새 비밀번호 입력" required>
-          <div class="form-hint">최소 8자, 대문자, 소문자, 숫자, 특수문자 포함</div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">
-            <i class="fas fa-check-double"></i> 새 비밀번호 확인 <span class="required">*</span>
-          </label>
-          <input type="password" id="confirm-password" class="form-input" placeholder="새 비밀번호 다시 입력" required>
-        </div>
-        <div id="password-error" class="alert-error hidden" style="margin-top: 16px;">
-          <i class="fas fa-exclamation-circle"></i>
-          <span id="password-error-text"></span>
-        </div>
-      </form>
-    `, [
-      { label: '취소', onclick: 'closeModal()' },
-      { label: '비밀번호 변경', primary: true, onclick: 'changePassword()' }
-    ]);
-  }
-  window.showChangePasswordModal = showChangePasswordModal;
-  
-  // 비밀번호 변경 처리
-  async function changePassword() {
-    const currentPassword = document.getElementById('current-password')?.value;
-    const newPassword = document.getElementById('new-password')?.value;
-    const confirmPassword = document.getElementById('confirm-password')?.value;
-    const errorDiv = document.getElementById('password-error');
-    const errorText = document.getElementById('password-error-text');
-    
-    // 유효성 검사
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      if (errorDiv && errorText) {
-        errorDiv.classList.remove('hidden');
-        errorText.textContent = '모든 필드를 입력해주세요.';
-      }
-      return;
-    }
-    
-    if (newPassword !== confirmPassword) {
-      if (errorDiv && errorText) {
-        errorDiv.classList.remove('hidden');
-        errorText.textContent = '새 비밀번호가 일치하지 않습니다.';
-      }
-      return;
-    }
-    
-    // 비밀번호 강도 검사
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-    if (!passwordRegex.test(newPassword)) {
-      if (errorDiv && errorText) {
-        errorDiv.classList.remove('hidden');
-        errorText.textContent = '비밀번호는 최소 8자, 대문자, 소문자, 숫자, 특수문자를 포함해야 합니다.';
-      }
-      return;
-    }
-    
-    try {
-      await api.post('/auth/change-password', {
-        currentPassword,
-        newPassword
-      });
-      
-      closeModal();
-      showToast('비밀번호가 변경되었습니다. 다시 로그인해주세요.', 'success');
-      
-      // 자동 로그아웃
-      setTimeout(() => {
-        logout(true);
-      }, 2000);
-      
-    } catch (error) {
-      if (errorDiv && errorText) {
-        errorDiv.classList.remove('hidden');
-        errorText.textContent = error.error || '비밀번호 변경에 실패했습니다.';
-      }
-    }
-  }
-  window.changePassword = changePassword;
-  
-  // 2FA 설정 페이지
-  async function show2FASettingsPage() {
-    const is2FAEnabled = state.user?.two_factor_enabled;
-    
-    if (is2FAEnabled) {
-      // 2FA 비활성화 확인
-      showModal('2단계 인증 비활성화', `
-        <div style="text-align: center; padding: 20px 0;">
-          <div style="width: 64px; height: 64px; margin: 0 auto 16px; background: var(--error-light); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-            <i class="fas fa-shield-alt" style="font-size: 28px; color: var(--error-main);"></i>
-          </div>
-          <h3 style="margin-bottom: 8px;">2단계 인증을 비활성화하시겠습니까?</h3>
-          <p style="color: var(--text-muted); font-size: 14px;">
-            2단계 인증을 비활성화하면 계정 보안이 약화됩니다.<br>
-            정말 비활성화하시겠습니까?
-          </p>
-        </div>
-      `, [
-        { label: '취소', onclick: 'closeModal()' },
-        { label: '비활성화', primary: true, danger: true, onclick: 'disable2FA()' }
-      ]);
-    } else {
-      // 2FA 활성화 설정
-      try {
-        const response = await api.post('/2fa/setup');
-        const { secret, qrCode, backupCodes } = response.data || {};
-        
-        showModal('2단계 인증 설정', `
-          <div style="margin-bottom: 20px;">
-            <p style="color: var(--text-secondary); margin-bottom: 16px;">
-              Google Authenticator, Microsoft Authenticator 등의 인증 앱으로 아래 QR 코드를 스캔하세요.
-            </p>
-            
-            <div style="text-align: center; padding: 20px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 16px;">
-              ${qrCode ? `<img src="${qrCode}" alt="QR Code" style="max-width: 200px;">` : `
-                <div style="padding: 20px; color: var(--text-muted);">
-                  <i class="fas fa-qrcode" style="font-size: 48px; margin-bottom: 12px;"></i>
-                  <p>QR 코드를 스캔할 수 없는 경우 아래 코드를 직접 입력하세요.</p>
-                </div>
-              `}
-            </div>
-            
-            <div style="margin-bottom: 16px;">
-              <label class="form-label">수동 입력 코드</label>
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <input type="text" class="form-input" value="${secret || ''}" readonly style="font-family: monospace; letter-spacing: 2px;">
-                <button class="btn btn-secondary btn-sm" onclick="copyToClipboard('${secret || ''}')">
-                  <i class="fas fa-copy"></i>
-                </button>
-              </div>
-            </div>
-            
-            ${backupCodes && backupCodes.length > 0 ? `
-            <div style="margin-bottom: 16px; padding: 16px; background: var(--warning-light); border-radius: 8px;">
-              <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--warning-dark);">
-                <i class="fas fa-exclamation-triangle"></i> 백업 코드
-              </h4>
-              <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
-                인증 앱에 접근할 수 없을 때 사용할 수 있는 일회용 코드입니다. 안전한 곳에 보관하세요.
-              </p>
-              <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-family: monospace; font-size: 12px;">
-                ${backupCodes.map(code => `<div style="padding: 8px; background: white; border-radius: 4px; text-align: center;">${code}</div>`).join('')}
-              </div>
-            </div>
-            ` : ''}
-            
-            <div class="form-group">
-              <label class="form-label">
-                <i class="fas fa-key"></i> 인증 코드 입력 <span class="required">*</span>
-              </label>
-              <input type="text" id="2fa-verify-code" class="form-input twofa-code-input" placeholder="000000" maxlength="6">
-              <div class="form-hint">인증 앱에 표시된 6자리 코드를 입력하세요</div>
-            </div>
-            
-            <div id="2fa-error" class="alert-error hidden">
-              <i class="fas fa-exclamation-circle"></i>
-              <span id="2fa-error-text"></span>
-            </div>
-          </div>
-        `, [
-          { label: '취소', onclick: 'closeModal()' },
-          { label: '인증 및 활성화', primary: true, onclick: 'verify2FA()' }
-        ]);
-        
-      } catch (error) {
-        showToast(error.error || '2FA 설정을 불러올 수 없습니다.', 'error');
-      }
-    }
-  }
-  window.show2FASettingsPage = show2FASettingsPage;
-  
-  // 2FA 인증 확인
-  async function verify2FA() {
-    const code = document.getElementById('2fa-verify-code')?.value;
-    const errorDiv = document.getElementById('2fa-error');
-    const errorText = document.getElementById('2fa-error-text');
-    
-    if (!code || code.length !== 6) {
-      if (errorDiv && errorText) {
-        errorDiv.classList.remove('hidden');
-        errorText.textContent = '6자리 인증 코드를 입력해주세요.';
-      }
-      return;
-    }
-    
-    try {
-      await api.post('/2fa/verify', { code });
-      
-      state.user.two_factor_enabled = true;
-      localStorage.setItem('ecrf_user', JSON.stringify(state.user));
-      
-      closeModal();
-      showToast('2단계 인증이 활성화되었습니다.', 'success');
-      loadMyPage();
-      
-    } catch (error) {
-      if (errorDiv && errorText) {
-        errorDiv.classList.remove('hidden');
-        errorText.textContent = error.error || '인증 코드가 올바르지 않습니다.';
-      }
-    }
-  }
-  window.verify2FA = verify2FA;
-  
-  // 2FA 비활성화
-  async function disable2FA() {
-    try {
-      await api.post('/2fa/disable');
-      
-      state.user.two_factor_enabled = false;
-      localStorage.setItem('ecrf_user', JSON.stringify(state.user));
-      
-      closeModal();
-      showToast('2단계 인증이 비활성화되었습니다.', 'warning');
-      loadMyPage();
-      
-    } catch (error) {
-      showToast(error.error || '2FA 비활성화에 실패했습니다.', 'error');
-    }
-  }
-  window.disable2FA = disable2FA;
-  
-  // 모든 세션 종료
-  async function logoutAllSessions() {
-    showModal('모든 세션 종료', `
-      <div style="text-align: center; padding: 20px 0;">
-        <div style="width: 64px; height: 64px; margin: 0 auto 16px; background: var(--warning-light); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-          <i class="fas fa-sign-out-alt" style="font-size: 28px; color: var(--warning-dark);"></i>
-        </div>
-        <h3 style="margin-bottom: 8px;">모든 세션을 종료하시겠습니까?</h3>
-        <p style="color: var(--text-muted); font-size: 14px;">
-          다른 기기에서 로그인된 모든 세션이 종료됩니다.<br>
-          현재 세션도 로그아웃됩니다.
-        </p>
-      </div>
-    `, [
-      { label: '취소', onclick: 'closeModal()' },
-      { label: '모든 세션 종료', primary: true, danger: true, onclick: 'confirmLogoutAllSessions()' }
-    ]);
-  }
-  window.logoutAllSessions = logoutAllSessions;
-  
-  async function confirmLogoutAllSessions() {
-    try {
-      // 모든 세션 종료 API 호출 (구현 필요시)
-      // await api.post('/auth/logout-all');
-      
-      closeModal();
-      showToast('모든 세션이 종료되었습니다.', 'success');
-      
-      setTimeout(() => {
-        logout(true);
-      }, 1000);
-      
-    } catch (error) {
-      showToast(error.error || '세션 종료에 실패했습니다.', 'error');
-    }
-  }
-  window.confirmLogoutAllSessions = confirmLogoutAllSessions;
-  
-  // 클립보드 복사
-  function copyToClipboard(text) {
-    navigator.clipboard.writeText(text).then(() => {
-      showToast('클립보드에 복사되었습니다.', 'success');
-    }).catch(() => {
-      showToast('복사에 실패했습니다.', 'error');
-    });
-  }
-  window.copyToClipboard = copyToClipboard;
 
   // =====================================================
   // SETTINGS & OTHER

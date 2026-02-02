@@ -25,7 +25,7 @@ import notificationRoutes from './routes/notifications';
 import auditRoutes from './routes/audit';
 
 // Application version
-const APP_VERSION = '3.0.0';
+const APP_VERSION = '2.0.0';
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -254,76 +254,844 @@ app.get('/manifest.json', async (c) => {
 // FRONTEND PAGES
 // =====================================================
 
-// HTML 템플릿 - Professional eCRF System (Modern Clinical Design)
+// HTML 템플릿 - Professional eCRF System (Medidata/Veeva Style)
 const htmlTemplate = (title: string, content: string) => `
 <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="description" content="eCRF - 21 CFR Part 11 Compliant Electronic Case Report Form System">
-    <meta name="theme-color" content="#0052a3">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="description" content="eCRF - Electronic Case Report Form System">
+    <meta name="theme-color" content="#0066B3">
     <title>${title} | eCRF Clinical</title>
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/icons/icon-192.png">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/static/design-system.css">
     <link rel="stylesheet" href="/static/mobile.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
     <style>
-      /* ===== Page-specific overrides and legacy compatibility ===== */
-      /* Note: Most styles are now in /static/design-system.css */
+      /* ===== Professional eCRF System Styles ===== */
+      * { margin: 0; padding: 0; box-sizing: border-box; }
       
-      /* Legacy variable aliases for backward compatibility */
       :root {
-        --primary: var(--primary-500);
-        --primary-dark: var(--primary-700);
-        --secondary: var(--secondary-500);
-        --success: var(--success-main);
-        --warning: var(--warning-main);
-        --danger: var(--error-main);
-        --border: var(--border-main);
+        --primary: #0066B3;
+        --primary-dark: #004d86;
+        --secondary: #5c6bc0;
+        --success: #2e7d32;
+        --warning: #ed6c02;
+        --danger: #d32f2f;
+        --text-primary: #1a1a1a;
+        --text-secondary: #5f6368;
+        --text-muted: #80868b;
+        --bg-primary: #ffffff;
+        --bg-secondary: #f8f9fa;
+        --bg-tertiary: #f1f3f4;
+        --border: #dadce0;
+        --border-light: #e8eaed;
       }
       
-      /* 2FA Code Input Special Styling */
-      .twofa-code-input {
-        text-align: center;
-        letter-spacing: 0.5em;
-        font-size: var(--text-xl);
-        font-family: var(--font-mono);
-        font-weight: var(--font-semibold);
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        color: var(--text-primary);
+        background: var(--bg-secondary);
+        min-height: 100vh;
       }
       
-      /* Error Alert Box */
-      .alert-error {
-        padding: var(--space-3) var(--space-4);
-        background: var(--error-light);
-        border: 1px solid rgba(211, 47, 47, 0.2);
-        border-radius: var(--radius-md);
-        color: var(--error-main);
-        font-size: var(--text-sm);
+      /* ===== Header ===== */
+      .app-header {
+        background: var(--primary);
+        height: 48px;
+        position: sticky;
+        top: 0;
+        z-index: 100;
         display: flex;
         align-items: center;
-        gap: var(--space-2);
+        padding: 0 16px;
       }
       
-      .alert-error i {
+      .header-brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #fff;
+        font-weight: 600;
+        font-size: 15px;
+        cursor: pointer;
+      }
+      
+      .header-brand i { font-size: 18px; }
+      
+      .header-nav {
+        display: flex;
+        align-items: center;
+        margin-left: 32px;
+        gap: 4px;
+      }
+      
+      .header-nav-item {
+        color: rgba(255,255,255,0.85);
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s;
+        text-decoration: none;
+      }
+      
+      .header-nav-item:hover { background: rgba(255,255,255,0.1); }
+      .header-nav-item.active { background: rgba(255,255,255,0.15); color: #fff; }
+      
+      .header-right {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      
+      .header-user {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        color: #fff;
+        font-size: 13px;
+      }
+      
+      .header-user:hover { background: rgba(255,255,255,0.1); }
+      
+      .user-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      
+      /* ===== Secondary Nav (Breadcrumb) ===== */
+      .sub-header {
+        background: #fff;
+        border-bottom: 1px solid var(--border);
+        padding: 0 20px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      .breadcrumb {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        width: 100%;
+        max-width: 1400px;
+      }
+      
+      .breadcrumb a {
+        color: var(--primary);
+        text-decoration: none;
+      }
+      
+      .breadcrumb a:hover { text-decoration: underline; }
+      .breadcrumb span { color: var(--text-muted); }
+      
+      /* ===== Tabs ===== */
+      .tabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 2px solid var(--border);
+        margin-bottom: 20px;
+        overflow-x: auto;
+      }
+      
+      .tab-btn {
+        padding: 12px 20px;
+        border: none;
+        background: transparent;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.2s;
+      }
+      
+      .tab-btn:hover {
+        color: var(--primary);
+        background: var(--bg-secondary);
+      }
+      
+      .tab-btn.active {
+        color: var(--primary);
+        border-bottom-color: var(--primary);
+      }
+      
+      .tab-btn .badge {
+        font-size: 11px;
+        padding: 2px 6px;
+      }
+      
+      .tab-content {
+        display: none;
+      }
+      
+      .tab-content.active {
+        display: block;
+      }
+      
+      /* ===== Main Layout ===== */
+      .main-container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      
+      /* ===== Cards ===== */
+      .card {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        margin-bottom: 16px;
+      }
+      
+      .card-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border-light);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      
+      .card-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+      
+      .card-body { padding: 20px; }
+      .card-body.compact { padding: 0; }
+      
+      /* ===== Buttons ===== */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 500;
+        border-radius: 4px;
+        border: none;
+        cursor: pointer;
+        transition: all 0.15s;
+        text-decoration: none;
+      }
+      
+      .btn-primary {
+        background: var(--primary);
+        color: #fff;
+      }
+      .btn-primary:hover { background: var(--primary-dark); }
+      
+      .btn-secondary {
+        background: #fff;
+        color: var(--text-primary);
+        border: 1px solid var(--border);
+      }
+      .btn-secondary:hover { background: var(--bg-tertiary); }
+      
+      .btn-danger {
+        background: var(--danger);
+        color: #fff;
+      }
+      .btn-danger:hover { background: #c62828; }
+      
+      .btn-sm {
+        padding: 5px 10px;
+        font-size: 12px;
+      }
+      
+      .btn-icon {
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--text-secondary);
+        border: none;
+        cursor: pointer;
+      }
+      .btn-icon:hover { background: var(--bg-tertiary); }
+      
+      /* ===== Forms ===== */
+      .form-group { margin-bottom: 16px; }
+      
+      .form-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        margin-bottom: 6px;
+      }
+      
+      .form-label .required { color: var(--danger); margin-left: 2px; }
+      
+      .form-input {
+        width: 100%;
+        padding: 10px 12px;
+        font-size: 14px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: #fff;
+        color: var(--text-primary);
+        transition: border-color 0.15s, box-shadow 0.15s;
+      }
+      
+      .form-input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(0, 102, 179, 0.1);
+      }
+      
+      .form-input::placeholder { color: var(--text-muted); }
+      
+      .form-input.error { border-color: var(--danger); }
+      
+      .form-hint {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 4px;
+      }
+      
+      /* ===== Tables ===== */
+      .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      
+      .data-table th {
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 500;
+        color: var(--text-secondary);
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+      }
+      
+      .data-table td {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border-light);
+        color: var(--text-primary);
+      }
+      
+      .data-table tbody tr:hover { background: var(--bg-secondary); }
+      .data-table tbody tr.clickable { cursor: pointer; }
+      
+      /* ===== Badges ===== */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 8px;
+        font-size: 11px;
+        font-weight: 500;
+        border-radius: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+      }
+      
+      .badge-active { background: #e8f5e9; color: #2e7d32; }
+      .badge-draft { background: var(--bg-tertiary); color: var(--text-secondary); }
+      .badge-pending { background: #fff3e0; color: #e65100; }
+      .badge-completed { background: #e3f2fd; color: #1565c0; }
+      .badge-locked { background: #f3e5f5; color: #7b1fa2; }
+      .badge-open { background: #ffebee; color: #c62828; }
+      .badge-closed { background: var(--bg-tertiary); color: var(--text-muted); }
+      
+      /* ===== Stats ===== */
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+      
+      .stat-card {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+      }
+      
+      .stat-label {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+      }
+      
+      .stat-value {
+        font-size: 28px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+      
+      .stat-change {
+        font-size: 12px;
+        margin-top: 4px;
+      }
+      .stat-change.positive { color: var(--success); }
+      .stat-change.negative { color: var(--danger); }
+      
+      /* ===== Dropdown ===== */
+      .dropdown { position: relative; }
+      
+      .dropdown-menu {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        min-width: 200px;
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        z-index: 1000;
+        display: none;
+        overflow: hidden;
+      }
+      
+      .dropdown-menu.show { display: block; }
+      
+      .dropdown-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        font-size: 13px;
+        color: var(--text-primary);
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      
+      .dropdown-item:hover { background: var(--bg-secondary); }
+      .dropdown-item i { width: 16px; color: var(--text-muted); }
+      
+      .dropdown-divider {
+        height: 1px;
+        background: var(--border-light);
+        margin: 4px 0;
+      }
+      
+      /* ===== Toast ===== */
+      .toast-container {
+        position: fixed;
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 2000;
+      }
+      
+      .toast {
+        background: #323232;
+        color: #fff;
+        padding: 12px 20px;
+        border-radius: 4px;
+        font-size: 14px;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      }
+      
+      .toast.success { background: var(--success); }
+      .toast.error { background: var(--danger); }
+      .toast.warning { background: var(--warning); }
+      
+      /* ===== Modal ===== */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+      }
+      
+      .modal {
+        background: #fff;
+        border-radius: 8px;
+        max-width: 560px;
+        width: 90%;
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      }
+      
+      .modal-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
         flex-shrink: 0;
       }
       
-      /* Password Code Display */
-      .password-code {
-        background: var(--bg-tertiary);
-        padding: var(--space-1) var(--space-2);
-        border-radius: var(--radius-sm);
-        font-family: var(--font-mono);
-        font-size: var(--text-xs);
-        user-select: all;
+      .modal-title {
+        font-size: 16px;
+        font-weight: 600;
       }
+      
+      .modal-close {
+        width: 28px;
+        height: 28px;
+        border: none;
+        background: none;
+        cursor: pointer;
+        color: var(--text-muted);
+        border-radius: 4px;
+      }
+      .modal-close:hover { background: var(--bg-tertiary); }
+      
+      .modal-body { 
+        padding: 20px; 
+        overflow-y: auto;
+        flex: 1;
+        max-height: calc(90vh - 130px);
+      }
+      
+      .modal-footer {
+        padding: 16px 20px;
+        border-top: 1px solid var(--border-light);
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        background: var(--bg-secondary);
+        flex-shrink: 0;
+      }
+      
+      /* ===== Empty State ===== */
+      .empty-state {
+        text-align: center;
+        padding: 48px 20px;
+        color: var(--text-muted);
+      }
+      
+      .empty-state i {
+        font-size: 48px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+      }
+      
+      .empty-state h3 {
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+      }
+      
+      .empty-state p { font-size: 14px; }
+      
+      /* ===== Loading ===== */
+      .loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 48px;
+        color: var(--text-muted);
+      }
+      
+      .spinner {
+        width: 32px;
+        height: 32px;
+        border: 3px solid var(--border);
+        border-top-color: var(--primary);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-bottom: 12px;
+      }
+      
+      @keyframes spin { to { transform: rotate(360deg); } }
+      
+      /* ===== Login Page ===== */
+      .login-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg-secondary);
+        padding: 20px;
+      }
+      
+      .login-container {
+        width: 100%;
+        max-width: 400px;
+      }
+      
+      .login-header {
+        text-align: center;
+        margin-bottom: 32px;
+      }
+      
+      .login-logo {
+        width: 48px;
+        height: 48px;
+        background: var(--primary);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px;
+      }
+      
+      .login-logo i { color: #fff; font-size: 24px; }
+      
+      .login-header h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 4px;
+      }
+      
+      .login-header p {
+        color: var(--text-muted);
+        font-size: 14px;
+      }
+      
+      .login-card {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 24px;
+      }
+      
+      .compliance-badges {
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+        margin-bottom: 24px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid var(--border-light);
+      }
+      
+      .compliance-badge {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        background: var(--bg-secondary);
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--text-secondary);
+      }
+      
+      .compliance-badge i { color: var(--success); }
+      
+      .test-accounts {
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border-light);
+      }
+      
+      .test-accounts h4 {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-muted);
+        margin-bottom: 12px;
+        text-align: center;
+      }
+      
+      .test-accounts-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      
+      .test-account {
+        padding: 10px;
+        background: var(--bg-secondary);
+        border-radius: 4px;
+        font-size: 11px;
+      }
+      
+      .test-account-role {
+        font-weight: 500;
+        color: var(--text-primary);
+        margin-bottom: 2px;
+      }
+      
+      .test-account-email {
+        color: var(--text-muted);
+        font-family: monospace;
+      }
+      
+      .login-footer {
+        text-align: center;
+        margin-top: 24px;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      
+      /* ===== Welcome Section ===== */
+      .welcome-banner {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px 24px;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      
+      .welcome-info {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      
+      .welcome-avatar {
+        width: 48px;
+        height: 48px;
+        background: var(--primary);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 600;
+        font-size: 16px;
+      }
+      
+      .welcome-text h2 {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 2px;
+      }
+      
+      .welcome-text p {
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+      
+      .welcome-meta {
+        text-align: right;
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+      
+      /* ===== Study List ===== */
+      .study-item {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border-light);
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      
+      .study-item:hover { background: var(--bg-secondary); }
+      .study-item:last-child { border-bottom: none; }
+      
+      .study-item-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+      
+      .study-protocol {
+        font-weight: 600;
+        color: var(--primary);
+      }
+      
+      .study-title {
+        color: var(--text-secondary);
+        font-size: 13px;
+        margin-bottom: 8px;
+      }
+      
+      .study-meta {
+        display: flex;
+        gap: 16px;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      
+      .study-meta-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      
+      /* ===== Quick Actions ===== */
+      .quick-actions {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+      }
+      
+      .quick-action {
+        padding: 16px;
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.15s;
+        text-align: center;
+      }
+      
+      .quick-action:hover {
+        border-color: var(--primary);
+        background: #f5f9ff;
+      }
+      
+      .quick-action i {
+        font-size: 20px;
+        color: var(--primary);
+        margin-bottom: 8px;
+        display: block;
+      }
+      
+      .quick-action span {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-primary);
+      }
+      
+      /* ===== Responsive ===== */
+      @media (max-width: 768px) {
+        .header-nav { display: none; }
+        .main-container { padding: 12px; }
+        .stats-grid { grid-template-columns: repeat(2, 1fr); }
+        .quick-actions { grid-template-columns: repeat(2, 1fr); }
+        .welcome-meta { display: none; }
+      }
+      
+      /* ===== Utility ===== */
+      .hidden { display: none !important; }
+      .text-center { text-align: center; }
+      .mt-4 { margin-top: 16px; }
+      .mb-4 { margin-bottom: 16px; }
     </style>
 </head>
 <body>
@@ -341,7 +1109,7 @@ app.get('/', (c) => {
     <!-- ===== HEADER ===== -->
     <header class="app-header" id="app-header">
       <div class="header-brand" onclick="navigateTo('dashboard')">
-        <i class="fas fa-heartbeat"></i>
+        <i class="fas fa-database"></i>
         <span>eCRF Clinical</span>
       </div>
       
@@ -353,161 +1121,91 @@ app.get('/', (c) => {
     <!-- ===== SUB HEADER ===== -->
     <div class="sub-header" id="sub-header" style="display: none;">
       <div class="breadcrumb" id="breadcrumb">
-        <a href="#" onclick="navigateTo('dashboard')"><i class="fas fa-home"></i></a>
-        <span class="breadcrumb-separator"><i class="fas fa-chevron-right"></i></span>
+        <a href="#" onclick="navigateTo('dashboard')">Home</a>
       </div>
     </div>
 
     <!-- ===== LOGIN SECTION ===== -->
-    <div id="login-section" class="login-page-enhanced hidden">
-      <div class="login-background">
-        <div class="login-bg-shape login-bg-shape-1"></div>
-        <div class="login-bg-shape login-bg-shape-2"></div>
-        <div class="login-bg-shape login-bg-shape-3"></div>
-      </div>
-      <div class="login-container animate-scale-in">
+    <div id="login-section" class="login-page hidden">
+      <div class="login-container">
         <div class="login-header">
-          <div class="login-logo-enhanced">
-            <div class="login-logo-icon">
-              <i class="fas fa-heartbeat"></i>
-            </div>
-            <div class="login-logo-pulse"></div>
+          <div class="login-logo">
+            <i class="fas fa-database"></i>
           </div>
-          <h1 class="gradient-text">eCRF Clinical</h1>
-          <p>21 CFR Part 11 Compliant EDC System</p>
+          <h1>eCRF Clinical</h1>
+          <p>Electronic Case Report Form System</p>
         </div>
         
-        <div class="login-card glass-card">
-          <div class="compliance-badges-enhanced">
-            <div class="compliance-badge-enhanced" data-tooltip="FDA 전자기록 규정 준수">
-              <div class="compliance-badge-icon">
-                <i class="fas fa-shield-alt"></i>
-              </div>
+        <div class="login-card">
+          <div class="compliance-badges">
+            <div class="compliance-badge">
+              <i class="fas fa-shield-alt"></i>
               <span>21 CFR Part 11</span>
             </div>
-            <div class="compliance-badge-enhanced" data-tooltip="임상시험관리기준 준수">
-              <div class="compliance-badge-icon">
-                <i class="fas fa-clipboard-check"></i>
-              </div>
-              <span>GCP Compliant</span>
-            </div>
-            <div class="compliance-badge-enhanced" data-tooltip="전자 서명 감사 추적">
-              <div class="compliance-badge-icon">
-                <i class="fas fa-fingerprint"></i>
-              </div>
-              <span>Audit Trail</span>
+            <div class="compliance-badge">
+              <i class="fas fa-lock"></i>
+              <span>HIPAA Ready</span>
             </div>
           </div>
           
-          <form id="login-form" class="login-form-enhanced">
-            <div class="form-group-floating">
-              <input type="email" id="login-email" class="form-input" placeholder=" " required autocomplete="email">
-              <label class="form-label-floating">
-                <i class="fas fa-envelope"></i> 이메일
-              </label>
-            </div>
-            
-            <div class="form-group-floating">
-              <input type="password" id="login-password" class="form-input" placeholder=" " required autocomplete="current-password">
-              <label class="form-label-floating">
-                <i class="fas fa-lock"></i> 비밀번호
-              </label>
-              <button type="button" class="password-toggle" onclick="togglePasswordVisibility()">
-                <i class="fas fa-eye" id="password-toggle-icon"></i>
-              </button>
-            </div>
-            
-            <div id="login-2fa-section" class="form-group hidden animate-slide-up">
+          <form id="login-form">
+            <div class="form-group">
               <label class="form-label">
-                <i class="fas fa-shield-alt"></i>
-                2FA 인증 코드 <span class="required">*</span>
+                이메일 <span class="required">*</span>
               </label>
-              <div class="twofa-input-group">
-                <input type="text" id="login-2fa-code" class="form-input twofa-code-input" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*">
-              </div>
-              <div class="form-hint"><i class="fas fa-info-circle"></i> 인증 앱에서 6자리 코드를 입력하세요</div>
+              <input type="email" id="login-email" class="form-input" placeholder="user@example.com" required autocomplete="email">
             </div>
             
-            <div id="login-error" class="alert-banner alert-banner-error hidden animate-shake">
-              <i class="fas fa-exclamation-circle alert-banner-icon"></i>
-              <div class="alert-banner-content">
-                <span id="login-error-text"></span>
-              </div>
+            <div class="form-group">
+              <label class="form-label">
+                비밀번호 <span class="required">*</span>
+              </label>
+              <input type="password" id="login-password" class="form-input" placeholder="비밀번호 입력" required autocomplete="current-password">
             </div>
             
-            <button type="submit" class="btn btn-gradient btn-lg w-full ripple" id="login-btn">
-              <span class="btn-text"><i class="fas fa-sign-in-alt"></i> 로그인</span>
-              <span class="btn-loading hidden"><i class="fas fa-spinner fa-spin"></i> 인증 중...</span>
+            <div id="login-2fa-section" class="form-group hidden">
+              <label class="form-label">
+                2FA 코드 <span class="required">*</span>
+              </label>
+              <input type="text" id="login-2fa-code" class="form-input" placeholder="000000" maxlength="6" style="text-align: center; letter-spacing: 4px; font-size: 18px; font-family: monospace;">
+            </div>
+            
+            <div id="login-error" class="hidden" style="padding: 12px; background: #ffebee; border-radius: 4px; color: #c62828; font-size: 13px; margin-bottom: 16px;">
+            </div>
+            
+            <button type="submit" class="btn btn-primary" style="width: 100%; height: 44px;">
+              로그인
             </button>
           </form>
           
-          <div class="login-divider">
-            <span>또는 테스트 계정으로 시작</span>
-          </div>
-          
-          <div class="test-accounts-enhanced">
-            <div class="test-accounts-grid stagger-animation">
-              <div class="test-account-enhanced hover-lift" onclick="fillTestAccount('admin@ecrf.local')">
-                <div class="test-account-avatar" style="background: linear-gradient(135deg, #e91e63 0%, #9c27b0 100%);">
-                  <i class="fas fa-user-shield"></i>
-                </div>
-                <div class="test-account-info">
-                  <div class="test-account-role">관리자</div>
-                  <div class="test-account-email">admin@ecrf.local</div>
-                </div>
-                <i class="fas fa-chevron-right test-account-arrow"></i>
+          <div class="test-accounts">
+            <h4>테스트 계정</h4>
+            <div class="test-accounts-grid">
+              <div class="test-account">
+                <div class="test-account-role">관리자</div>
+                <div class="test-account-email">admin@ecrf.local</div>
               </div>
-              <div class="test-account-enhanced hover-lift" onclick="fillTestAccount('pi@hospital1.local')">
-                <div class="test-account-avatar" style="background: linear-gradient(135deg, #2196f3 0%, #00bcd4 100%);">
-                  <i class="fas fa-user-md"></i>
-                </div>
-                <div class="test-account-info">
-                  <div class="test-account-role">연구책임자 (PI)</div>
-                  <div class="test-account-email">pi@hospital1.local</div>
-                </div>
-                <i class="fas fa-chevron-right test-account-arrow"></i>
+              <div class="test-account">
+                <div class="test-account-role">연구책임자</div>
+                <div class="test-account-email">pi@hospital1.local</div>
               </div>
-              <div class="test-account-enhanced hover-lift" onclick="fillTestAccount('crc@hospital1.local')">
-                <div class="test-account-avatar" style="background: linear-gradient(135deg, #4caf50 0%, #8bc34a 100%);">
-                  <i class="fas fa-user-nurse"></i>
-                </div>
-                <div class="test-account-info">
-                  <div class="test-account-role">연구 코디네이터</div>
-                  <div class="test-account-email">crc@hospital1.local</div>
-                </div>
-                <i class="fas fa-chevron-right test-account-arrow"></i>
+              <div class="test-account">
+                <div class="test-account-role">CRC</div>
+                <div class="test-account-email">crc@hospital1.local</div>
               </div>
-              <div class="test-account-enhanced hover-lift" onclick="fillTestAccount('cra@sponsor.local')">
-                <div class="test-account-avatar" style="background: linear-gradient(135deg, #ff9800 0%, #ffc107 100%);">
-                  <i class="fas fa-user-tie"></i>
-                </div>
-                <div class="test-account-info">
-                  <div class="test-account-role">임상 모니터</div>
-                  <div class="test-account-email">cra@sponsor.local</div>
-                </div>
-                <i class="fas fa-chevron-right test-account-arrow"></i>
+              <div class="test-account">
+                <div class="test-account-role">모니터</div>
+                <div class="test-account-email">cra@sponsor.local</div>
               </div>
             </div>
-            <div class="test-password-hint">
-              <i class="fas fa-key"></i>
-              <span>공통 비밀번호:</span>
-              <code class="password-code" onclick="copyPassword()">Test1234!</code>
-              <span class="copy-hint" id="copy-hint">복사됨!</span>
-            </div>
+            <p style="text-align: center; margin-top: 12px; font-size: 12px; color: var(--text-muted);">
+              비밀번호: <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 3px;">Test1234!</code>
+            </p>
           </div>
         </div>
         
-        <div class="login-footer-enhanced">
-          <div class="login-footer-links">
-            <a href="#" onclick="showPrivacyPolicy(event)"><i class="fas fa-shield-alt"></i> 개인정보처리방침</a>
-            <span class="footer-divider">|</span>
-            <a href="#" onclick="showTerms(event)"><i class="fas fa-file-contract"></i> 이용약관</a>
-          </div>
-          <p>© 2026 eCRF Clinical Data Management System</p>
-          <p class="version-info">
-            <span class="version-badge">v3.0.0</span>
-            <span class="powered-by">Powered by Cloudflare Workers</span>
-          </p>
+        <div class="login-footer">
+          © 2024 eCRF Clinical Data Management System
         </div>
       </div>
     </div>
@@ -518,7 +1216,7 @@ app.get('/', (c) => {
         <div id="main-content">
           <div class="loading">
             <div class="spinner"></div>
-            <span class="loading-text">데이터를 불러오는 중...</span>
+            <span>데이터를 불러오는 중...</span>
           </div>
         </div>
       </div>
@@ -529,79 +1227,13 @@ app.get('/', (c) => {
 
     <!-- ===== MODAL CONTAINER ===== -->
     <div id="modal-container"></div>
-    
-    <!-- ===== Enhanced Login Scripts ===== -->
-    <script>
-      function fillTestAccount(email) {
-        const emailInput = document.getElementById('login-email');
-        const passwordInput = document.getElementById('login-password');
-        if (emailInput) {
-          emailInput.value = email;
-          emailInput.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-        if (passwordInput) {
-          passwordInput.value = 'Test1234!';
-          passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-        emailInput?.focus();
-        
-        // Visual feedback
-        const accounts = document.querySelectorAll('.test-account-enhanced');
-        accounts.forEach(acc => acc.style.background = '');
-        event.currentTarget.style.background = 'var(--primary-50)';
-      }
-      
-      function togglePasswordVisibility() {
-        const passwordInput = document.getElementById('login-password');
-        const toggleIcon = document.getElementById('password-toggle-icon');
-        if (passwordInput.type === 'password') {
-          passwordInput.type = 'text';
-          toggleIcon.className = 'fas fa-eye-slash';
-        } else {
-          passwordInput.type = 'password';
-          toggleIcon.className = 'fas fa-eye';
-        }
-      }
-      
-      function copyPassword() {
-        navigator.clipboard.writeText('Test1234!').then(() => {
-          const hint = document.getElementById('copy-hint');
-          hint.classList.add('show');
-          setTimeout(() => hint.classList.remove('show'), 2000);
-        });
-      }
-      
-      function showPrivacyPolicy(e) {
-        e.preventDefault();
-        alert('개인정보처리방침 페이지는 준비 중입니다.');
-      }
-      
-      function showTerms(e) {
-        e.preventDefault();
-        alert('이용약관 페이지는 준비 중입니다.');
-      }
-    </script>
   `;
 
   return c.html(htmlTemplate('홈', content));
 });
 
-// 404 페이지 - API와 웹 페이지 구분 처리
+// 404 페이지
 app.notFound((c) => {
-  const path = c.req.path;
-  
-  // API 엔드포인트는 JSON 응답
-  if (path.startsWith('/api/')) {
-    return c.json({
-      success: false,
-      error: 'Endpoint not found',
-      code: 'NOT_FOUND',
-      path: path,
-      request_id: c.get('requestId')
-    }, 404);
-  }
-  
-  // 웹 페이지는 HTML 응답
   return c.html(htmlTemplate('페이지를 찾을 수 없음', `
     <div class="main-container">
       <div class="empty-state" style="margin-top: 80px;">
@@ -619,32 +1251,10 @@ app.notFound((c) => {
 // 에러 핸들러
 app.onError((err, c) => {
   console.error('Server error:', err);
-  
-  const path = c.req.path;
-  
-  // API 엔드포인트는 JSON 응답
-  if (path.startsWith('/api/')) {
-    return c.json({
-      success: false,
-      error: '서버 오류가 발생했습니다.',
-      code: 'INTERNAL_SERVER_ERROR',
-      request_id: c.get('requestId')
-    }, 500);
-  }
-  
-  // 웹 페이지는 HTML 응답
-  return c.html(htmlTemplate('오류 발생', `
-    <div class="main-container">
-      <div class="empty-state" style="margin-top: 80px;">
-        <i class="fas fa-exclamation-triangle"></i>
-        <h3>500 - 서버 오류</h3>
-        <p>서버에서 오류가 발생했습니다. 잠시 후 다시 시도해주세요.</p>
-        <a href="/" class="btn btn-primary" style="margin-top: 16px;">
-          <i class="fas fa-home"></i> 홈으로 돌아가기
-        </a>
-      </div>
-    </div>
-  `), 500);
+  return c.json({
+    success: false,
+    error: '서버 오류가 발생했습니다.',
+  }, 500);
 });
 
 export default app;
