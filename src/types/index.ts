@@ -558,6 +558,7 @@ export interface Bindings {
 export type Variables = {
   user: AuthPayload | null;
   sessionId: string | null;
+  requestId: string | null;
 };
 
 // =====================================================

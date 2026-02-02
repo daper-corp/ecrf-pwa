@@ -1,23 +1,51 @@
 {
   "name": "ecrf-pwa",
-  "version": "1.0.0",
-  "description": "Electronic Case Report Form PWA - 21 CFR Part 11 준수 시스템",
+  "version": "2.0.0",
+  "description": "Electronic Case Report Form (eCRF) PWA - 21 CFR Part 11 Compliant Clinical Trial Data Management System",
   "type": "module",
+  "author": "Daper Corp",
+  "license": "PROPRIETARY",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/daper-corp/ecrf-pwa.git"
+  },
+  "homepage": "https://ecrf-pwa.pages.dev",
+  "keywords": [
+    "ecrf",
+    "clinical-trial",
+    "edc",
+    "21-cfr-part-11",
+    "cdisc",
+    "pwa",
+    "hono",
+    "cloudflare-workers"
+  ],
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "dev:sandbox": "wrangler pages dev dist --d1=ecrf-production --local --ip 0.0.0.0 --port 3000",
     "build": "vite build",
+    "build:check": "npx -p typescript tsc --noEmit && vite build",
     "preview": "wrangler pages dev dist",
     "deploy": "npm run build && wrangler pages deploy dist",
     "deploy:prod": "npm run build && wrangler pages deploy dist --project-name ecrf-pwa",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'Linting not configured'",
+    "test": "echo 'Tests not configured'",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:migrate:local": "wrangler d1 migrations apply ecrf-production --local",
-    "db:migrate:prod": "wrangler d1 migrations apply ecrf-production",
+    "db:migrate:prod": "wrangler d1 migrations apply ecrf-production --remote",
     "db:seed": "wrangler d1 execute ecrf-production --local --file=./seed.sql",
     "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local && npm run db:seed",
     "db:console:local": "wrangler d1 execute ecrf-production --local",
-    "db:console:prod": "wrangler d1 execute ecrf-production",
-    "clean-port": "fuser -k 3000/tcp 2>/dev/null || true"
+    "db:console:prod": "wrangler d1 execute ecrf-production --remote",
+    "db:backup": "wrangler d1 export ecrf-production --remote --output=backup.sql",
+    "clean-port": "fuser -k 3000/tcp 2>/dev/null || true",
+    "clean": "rm -rf dist .wrangler/tmp",
+    "prepare": "echo 'Ready for development'"
   },
   "dependencies": {
     "hono": "^4.11.5"

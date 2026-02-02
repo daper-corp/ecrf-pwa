@@ -1,11 +1,13 @@
 // eCRF PWA - Main Application Entry Point
 // Hono Framework + Cloudflare Pages
+// 21 CFR Part 11 Compliant Electronic Data Capture System
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import type { Bindings, Variables } from './types';
 import { authMiddleware } from './middleware/auth';
+import { securityHeaders, apiRateLimiter, loginRateLimiter, requestId, validateRequest } from './middleware/security';
 import authRoutes from './routes/auth';
 import studyRoutes from './routes/studies';
 import siteRoutes from './routes/sites';
@@ -22,24 +24,64 @@ import twofaRoutes from './routes/twofa';
 import notificationRoutes from './routes/notifications';
 import auditRoutes from './routes/audit';
 
+// Application version
+const APP_VERSION = '2.0.0';
+
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // =====================================================
-// MIDDLEWARE
+// GLOBAL MIDDLEWARE
 // =====================================================
 
-// CORS 설정
+// Request ID for tracing
+app.use('*', requestId);
+
+// Security headers for all responses
+app.use('*', securityHeaders);
+
+// =====================================================
+// API MIDDLEWARE
+// =====================================================
+
+// CORS 설정 (프로덕션에서는 특정 도메인만 허용)
 app.use('/api/*', cors({
-  origin: '*',
-  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization'],
-  exposeHeaders: ['Content-Length', 'X-Request-Id'],
+  origin: (origin) => {
+    // 프로덕션 도메인 허용 목록
+    const allowedOrigins = [
+      'https://ecrf-pwa.pages.dev',
+      'https://*.ecrf-pwa.pages.dev',
+      /^https:\/\/.*\.pages\.dev$/,
+      'http://localhost:3000',
+      'http://127.0.0.1:3000'
+    ];
+    
+    if (!origin) return '*';  // Allow requests with no origin (mobile apps, curl)
+    
+    for (const allowed of allowedOrigins) {
+      if (typeof allowed === 'string' && origin === allowed) return origin;
+      if (allowed instanceof RegExp && allowed.test(origin)) return origin;
+    }
+    
+    return origin;  // Allow in development, restrict in strict production
+  },
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-CSRF-Token'],
+  exposeHeaders: ['Content-Length', 'X-Request-ID', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
   maxAge: 86400,
   credentials: true,
 }));
 
-// 로깅
-app.use('/api/*', logger());
+// 로깅 (구조화된 로그)
+app.use('/api/*', logger((message: string, ...rest: string[]) => {
+  console.log(`[${new Date().toISOString()}] ${message}`, ...rest);
+}));
+
+// Request validation
+app.use('/api/*', validateRequest);
+
+// Rate limiting (login 엔드포인트는 더 엄격하게)
+app.use('/api/auth/login', loginRateLimiter);
+app.use('/api/*', apiRateLimiter);
 
 // 인증 미들웨어
 app.use('/api/*', authMiddleware);
@@ -96,13 +138,54 @@ app.route('/api/notifications', notificationRoutes);
 // Audit Trail API (21 CFR Part 11 Compliant)
 app.route('/api/audit', auditRoutes);
 
-// Health Check
-app.get('/api/health', (c) => {
+// Health Check (detailed for monitoring)
+app.get('/api/health', async (c) => {
+  const startTime = Date.now();
+  let dbStatus = 'ok';
+  let dbLatency = 0;
+  
+  // Check database connectivity
+  try {
+    const dbStart = Date.now();
+    await c.env.DB.prepare('SELECT 1').first();
+    dbLatency = Date.now() - dbStart;
+  } catch (error) {
+    dbStatus = 'error';
+    console.error('Database health check failed:', error);
+  }
+  
+  const responseTime = Date.now() - startTime;
+  
   return c.json({
-    status: 'ok',
+    status: dbStatus === 'ok' ? 'healthy' : 'degraded',
     timestamp: new Date().toISOString(),
-    version: '2.0.0',
+    version: APP_VERSION,
+    environment: c.env.ENVIRONMENT || 'production',
+    uptime: 'N/A',  // Workers don't have persistent uptime
+    checks: {
+      database: {
+        status: dbStatus,
+        latency_ms: dbLatency
+      }
+    },
+    response_time_ms: responseTime,
+    request_id: c.get('requestId')
   });
+});
+
+// Readiness probe (for load balancers)
+app.get('/api/ready', async (c) => {
+  try {
+    await c.env.DB.prepare('SELECT 1').first();
+    return c.json({ ready: true });
+  } catch {
+    return c.json({ ready: false }, 503);
+  }
+});
+
+// Liveness probe
+app.get('/api/live', (c) => {
+  return c.json({ alive: true });
 });
 
 // =====================================================

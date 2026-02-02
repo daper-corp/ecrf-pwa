@@ -1,32 +1,69 @@
+# =====================================================
+# eCRF PWA - Production .gitignore
+# =====================================================
+
 # Dependencies
 node_modules/
 
 # Build output
 dist/
+build/
+out/
 
-# Wrangler local state
+# Wrangler local state & cache
 .wrangler/
 
-# Environment variables
+# Environment variables (CRITICAL - never commit)
 .env
+.env.*
 .env.local
 .env.*.local
 .dev.vars
+*.env
 
-# IDE
+# Secrets & credentials (CRITICAL - never commit)
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets/
+credentials/
+.secrets
+*.secret
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+backup.sql
+*.sql.gz
+
+# IDE & Editor
 .idea/
 .vscode/
 *.swp
 *.swo
+*.sublime-*
+*.code-workspace
 
 # OS files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+desktop.ini
 
 # Logs
 logs/
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
 
 # PM2
 .pm2/
@@ -34,15 +71,44 @@ pids/
 *.pid
 *.seed
 *.pid.lock
+ecosystem.config.cjs.backup
 
-# Test coverage
+# Test & Coverage
 coverage/
+.nyc_output/
+test-results/
+playwright-report/
 
 # Temporary files
 *.tmp
 *.temp
 .cache/
+.parcel-cache/
+tmp/
+temp/
 
 # Backup files
 *.backup
 *.bak
+*.orig
+
+# Debug
+.node_inspect_*
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Cloudflare
+.mf/
+
+# Miscellaneous
+*.gz
+*.zip
+*.tar
+*.rar
