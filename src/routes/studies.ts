@@ -90,9 +90,31 @@ studies.get('/', requireAuth, async (c) => {
       c.env.DB.prepare(countQuery).bind(...countParams).first<{ total: number }>(),
     ]);
 
+    // 각 Study별 피험자 수 및 기관 수 조회
+    const studiesWithCounts = await Promise.all(
+      studiesResult.results.map(async (study) => {
+        const [subjectCount, siteCount] = await Promise.all([
+          c.env.DB.prepare(`
+            SELECT COUNT(*) as count FROM subjects sub
+            JOIN sites s ON sub.site_id = s.id
+            WHERE s.study_id = ?
+          `).bind(study.id).first<{ count: number }>(),
+          c.env.DB.prepare(`
+            SELECT COUNT(*) as count FROM sites WHERE study_id = ?
+          `).bind(study.id).first<{ count: number }>()
+        ]);
+        
+        return {
+          ...study,
+          subject_count: subjectCount?.count ?? 0,
+          site_count: siteCount?.count ?? 0
+        };
+      })
+    );
+
     return c.json({
       success: true,
-      data: studiesResult.results,
+      data: studiesWithCounts,
       pagination: {
         total: countResult?.total ?? 0,
         limit,
