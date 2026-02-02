@@ -913,6 +913,9 @@
                 <div style="font-size: 12px; color: var(--text-muted);">${state.user.email}</div>
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">${ui.getRoleName(state.user.role)}</div>
               </div>
+              <div class="dropdown-item" onclick="navigateTo('mypage'); closeUserMenu();">
+                <i class="fas fa-user-circle"></i><span>마이페이지</span>
+              </div>
               <div class="dropdown-item" onclick="showSettings(); closeUserMenu();">
                 <i class="fas fa-cog"></i><span>설정</span>
               </div>
@@ -1005,6 +1008,9 @@
         break;
       case 'reports':
         loadReports();
+        break;
+      case 'mypage':
+        loadMyPage();
         break;
       default:
         loadDashboard();
@@ -6605,6 +6611,373 @@
     }
   }
   window.exportData = exportData;
+
+  // =====================================================
+  // MY PAGE (마이페이지)
+  // =====================================================
+  async function loadMyPage() {
+    const mainContent = document.getElementById('main-content');
+    if (!mainContent) return;
+
+    mainContent.innerHTML = `
+      <div class="page-header">
+        <h1><i class="fas fa-user-circle"></i> 마이페이지</h1>
+      </div>
+      <div class="loading-container">
+        <div class="spinner"></div>
+        <p>사용자 정보를 불러오는 중...</p>
+      </div>
+    `;
+
+    try {
+      // Fetch current user info
+      const userResponse = await api.get('/auth/me');
+      const currentUser = userResponse.user || state.user;
+      
+      // Fetch user's assigned sites
+      let userSites = [];
+      try {
+        const sitesResponse = await api.get('/sites/my');
+        userSites = sitesResponse.sites || [];
+      } catch (e) {
+        console.log('Could not fetch user sites:', e);
+      }
+
+      // Fetch recent activity logs
+      let activityLogs = [];
+      try {
+        const logsResponse = await api.get(`/audit/logs?userId=${currentUser.id}&limit=10`);
+        activityLogs = logsResponse.logs || [];
+      } catch (e) {
+        console.log('Could not fetch activity logs:', e);
+      }
+
+      mainContent.innerHTML = `
+        <div class="page-header">
+          <h1><i class="fas fa-user-circle"></i> 마이페이지</h1>
+          <p style="color: var(--text-muted); margin-top: 4px;">내 정보 및 보안 설정을 관리합니다</p>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px;">
+          <!-- Profile Info Card -->
+          <div class="card">
+            <div class="card-header">
+              <h3><i class="fas fa-id-card"></i> 프로필 정보</h3>
+            </div>
+            <div class="card-body">
+              <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
+                <div class="user-avatar" style="width: 80px; height: 80px; font-size: 28px; background: linear-gradient(135deg, var(--primary), var(--primary-dark));">
+                  ${ui.getInitials(currentUser.name)}
+                </div>
+                <div>
+                  <h2 style="margin: 0; font-size: 24px;">${sanitizeHTML(currentUser.name)}</h2>
+                  <p style="margin: 4px 0 0 0; color: var(--text-muted);">${sanitizeHTML(currentUser.email)}</p>
+                  <span class="badge badge-${currentUser.status === 'ACTIVE' ? 'active' : 'warning'}" style="margin-top: 8px;">${currentUser.status === 'ACTIVE' ? '활성' : currentUser.status}</span>
+                </div>
+              </div>
+              
+              <div style="display: grid; gap: 16px;">
+                <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border-light);">
+                  <span style="color: var(--text-muted);"><i class="fas fa-user-tag" style="width: 20px;"></i> 역할</span>
+                  <span style="font-weight: 500;">${ui.getRoleName(currentUser.role)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border-light);">
+                  <span style="color: var(--text-muted);"><i class="fas fa-calendar-plus" style="width: 20px;"></i> 계정 생성일</span>
+                  <span>${ui.formatDate(currentUser.created_at)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border-light);">
+                  <span style="color: var(--text-muted);"><i class="fas fa-clock" style="width: 20px;"></i> 최근 로그인</span>
+                  <span>${currentUser.last_login ? ui.formatDateTime(currentUser.last_login) : '-'}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 12px 0;">
+                  <span style="color: var(--text-muted);"><i class="fas fa-fingerprint" style="width: 20px;"></i> 사용자 ID</span>
+                  <span style="font-family: monospace; font-size: 12px;">${currentUser.id}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Security Settings Card -->
+          <div class="card">
+            <div class="card-header">
+              <h3><i class="fas fa-shield-alt"></i> 보안 설정</h3>
+            </div>
+            <div class="card-body">
+              <!-- Password Change -->
+              <div style="padding: 16px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-key"></i> 비밀번호</h4>
+                    <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-muted);">정기적으로 비밀번호를 변경하세요</p>
+                  </div>
+                  <button class="btn btn-secondary btn-sm" onclick="showChangePasswordModal()">
+                    <i class="fas fa-edit"></i> 변경
+                  </button>
+                </div>
+              </div>
+
+              <!-- 2FA Settings -->
+              <div style="padding: 16px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-mobile-alt"></i> 2단계 인증</h4>
+                    <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-muted);">
+                      ${currentUser.two_factor_enabled ? 
+                        '<span style="color: var(--success);"><i class="fas fa-check-circle"></i> 활성화됨</span>' : 
+                        '<span style="color: var(--warning);"><i class="fas fa-exclamation-triangle"></i> 비활성화됨</span>'}
+                    </p>
+                  </div>
+                  <button class="btn btn-${currentUser.two_factor_enabled ? 'secondary' : 'primary'} btn-sm" onclick="show2FASettings()">
+                    <i class="fas fa-${currentUser.two_factor_enabled ? 'cog' : 'plus'}"></i> 
+                    ${currentUser.two_factor_enabled ? '관리' : '활성화'}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Active Sessions -->
+              <div style="padding: 16px; background: var(--bg-secondary); border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <h4 style="margin: 0; font-size: 14px;"><i class="fas fa-desktop"></i> 현재 세션</h4>
+                    <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-muted);">이 기기에서 로그인 중</p>
+                  </div>
+                  <button class="btn btn-danger btn-sm" onclick="logoutAllSessions()">
+                    <i class="fas fa-sign-out-alt"></i> 모든 세션 종료
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Assigned Sites -->
+        ${userSites.length > 0 ? `
+        <div class="card" style="margin-top: 24px;">
+          <div class="card-header">
+            <h3><i class="fas fa-hospital"></i> 할당된 연구기관</h3>
+          </div>
+          <div class="card-body" style="padding: 0;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>기관번호</th>
+                  <th>기관명</th>
+                  <th>Study</th>
+                  <th>역할</th>
+                  <th>주담당자</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${userSites.map(site => `
+                  <tr class="clickable" onclick="navigateTo('site', {siteId: '${site.id}'})">
+                    <td><span class="badge">${sanitizeHTML(site.site_number || '-')}</span></td>
+                    <td>${sanitizeHTML(site.name)}</td>
+                    <td>${sanitizeHTML(site.study_name || site.protocol_number || '-')}</td>
+                    <td>${ui.getRoleName(site.user_role || site.role)}</td>
+                    <td>${site.is_primary ? '<i class="fas fa-star" style="color: var(--warning);"></i> 예' : '아니오'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        ` : ''}
+
+        <!-- Recent Activity -->
+        <div class="card" style="margin-top: 24px;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h3><i class="fas fa-history"></i> 최근 활동</h3>
+            <button class="btn btn-secondary btn-sm" onclick="loadMyActivityLog()">
+              <i class="fas fa-sync-alt"></i> 새로고침
+            </button>
+          </div>
+          <div class="card-body" id="activity-log-container">
+            ${activityLogs.length > 0 ? `
+              <div style="display: flex; flex-direction: column; gap: 12px;">
+                ${activityLogs.map(log => `
+                  <div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--primary-light); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                      <i class="fas fa-${getActivityIcon(log.action)}" style="color: var(--primary);"></i>
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                      <p style="margin: 0; font-size: 14px;">${sanitizeHTML(log.description || log.action)}</p>
+                      <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-muted);">
+                        <i class="fas fa-clock"></i> ${ui.formatDateTime(log.created_at)}
+                        ${log.ip_address ? `<span style="margin-left: 12px;"><i class="fas fa-globe"></i> ${log.ip_address}</span>` : ''}
+                      </p>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            ` : `
+              <div class="empty-state">
+                <i class="fas fa-inbox" style="font-size: 48px; color: var(--text-muted); margin-bottom: 16px;"></i>
+                <p>최근 활동 내역이 없습니다.</p>
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+
+    } catch (error) {
+      console.error('Failed to load my page:', error);
+      mainContent.innerHTML = `
+        <div class="page-header">
+          <h1><i class="fas fa-user-circle"></i> 마이페이지</h1>
+        </div>
+        <div class="empty-state" style="margin-top: 40px;">
+          <i class="fas fa-exclamation-circle" style="color: var(--danger);"></i>
+          <h3>정보를 불러오는데 실패했습니다</h3>
+          <p style="color: var(--text-muted);">${error.message || '잠시 후 다시 시도해주세요.'}</p>
+          <button class="btn btn-primary" style="margin-top: 16px;" onclick="loadMyPage()">
+            <i class="fas fa-redo"></i> 다시 시도
+          </button>
+        </div>
+      `;
+    }
+  }
+  window.loadMyPage = loadMyPage;
+
+  // Helper function for activity icons
+  function getActivityIcon(action) {
+    const iconMap = {
+      'LOGIN': 'sign-in-alt',
+      'LOGOUT': 'sign-out-alt',
+      'CREATE': 'plus',
+      'UPDATE': 'edit',
+      'DELETE': 'trash',
+      'VIEW': 'eye',
+      'EXPORT': 'download',
+      'SIGN': 'signature',
+      'VERIFY': 'check-circle',
+      'QUERY_CREATE': 'comment-medical',
+      'QUERY_RESPOND': 'reply',
+      'QUERY_CLOSE': 'check',
+      'DATA_ENTRY': 'keyboard',
+      'PASSWORD_CHANGE': 'key',
+      '2FA_ENABLE': 'shield-alt',
+      '2FA_DISABLE': 'shield-alt'
+    };
+    return iconMap[action] || 'circle';
+  }
+
+  // Load activity log for my page
+  async function loadMyActivityLog() {
+    const container = document.getElementById('activity-log-container');
+    if (!container) return;
+
+    container.innerHTML = '<div class="loading-container"><div class="spinner"></div></div>';
+
+    try {
+      const response = await api.get(`/audit/logs?userId=${state.user.id}&limit=10`);
+      const logs = response.logs || [];
+
+      if (logs.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <i class="fas fa-inbox" style="font-size: 48px; color: var(--text-muted); margin-bottom: 16px;"></i>
+            <p>최근 활동 내역이 없습니다.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          ${logs.map(log => `
+            <div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+              <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--primary-light); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                <i class="fas fa-${getActivityIcon(log.action)}" style="color: var(--primary);"></i>
+              </div>
+              <div style="flex: 1; min-width: 0;">
+                <p style="margin: 0; font-size: 14px;">${sanitizeHTML(log.description || log.action)}</p>
+                <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-muted);">
+                  <i class="fas fa-clock"></i> ${ui.formatDateTime(log.created_at)}
+                  ${log.ip_address ? `<span style="margin-left: 12px;"><i class="fas fa-globe"></i> ${log.ip_address}</span>` : ''}
+                </p>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    } catch (error) {
+      container.innerHTML = `<p style="color: var(--danger); text-align: center;">활동 로그를 불러오는데 실패했습니다.</p>`;
+    }
+  }
+  window.loadMyActivityLog = loadMyActivityLog;
+
+  // Change password modal
+  function showChangePasswordModal() {
+    showModal('비밀번호 변경', `
+      <form id="change-password-form" style="display: flex; flex-direction: column; gap: 16px;">
+        <div class="form-group">
+          <label class="form-label">현재 비밀번호</label>
+          <input type="password" class="form-input" id="current-password" required placeholder="현재 비밀번호 입력">
+        </div>
+        <div class="form-group">
+          <label class="form-label">새 비밀번호</label>
+          <input type="password" class="form-input" id="new-password" required placeholder="새 비밀번호 입력" minlength="8">
+          <small style="color: var(--text-muted); font-size: 11px;">최소 8자, 영문 대소문자, 숫자, 특수문자 포함 권장</small>
+        </div>
+        <div class="form-group">
+          <label class="form-label">새 비밀번호 확인</label>
+          <input type="password" class="form-input" id="confirm-password" required placeholder="새 비밀번호 다시 입력">
+        </div>
+        <div id="password-error" class="error-message hidden" style="color: var(--danger); font-size: 13px;"></div>
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 8px;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">취소</button>
+          <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i> 변경</button>
+        </div>
+      </form>
+    `);
+
+    document.getElementById('change-password-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const currentPassword = document.getElementById('current-password').value;
+      const newPassword = document.getElementById('new-password').value;
+      const confirmPassword = document.getElementById('confirm-password').value;
+      const errorEl = document.getElementById('password-error');
+
+      if (newPassword !== confirmPassword) {
+        errorEl.textContent = '새 비밀번호가 일치하지 않습니다.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      if (newPassword.length < 8) {
+        errorEl.textContent = '비밀번호는 최소 8자 이상이어야 합니다.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      try {
+        await api.post('/auth/change-password', {
+          current_password: currentPassword,
+          new_password: newPassword
+        });
+        closeModal();
+        showToast('비밀번호가 변경되었습니다.', 'success');
+      } catch (error) {
+        errorEl.textContent = error.error || '비밀번호 변경에 실패했습니다.';
+        errorEl.classList.remove('hidden');
+      }
+    });
+  }
+  window.showChangePasswordModal = showChangePasswordModal;
+
+  // Logout all sessions
+  async function logoutAllSessions() {
+    if (!confirm('모든 기기에서 로그아웃됩니다. 계속하시겠습니까?')) return;
+
+    try {
+      await api.post('/auth/logout-all');
+      showToast('모든 세션이 종료되었습니다. 다시 로그인해주세요.', 'info');
+      logout(false);
+    } catch (error) {
+      showToast(error.error || '세션 종료에 실패했습니다.', 'error');
+    }
+  }
+  window.logoutAllSessions = logoutAllSessions;
 
   // =====================================================
   // INITIALIZATION
