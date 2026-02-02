@@ -6223,38 +6223,418 @@
   window.showSettings = showSettings;
 
   function show2FASettings() {
-    showModal('2단계 인증', `
-      <p style="margin-bottom: 16px; color: var(--text-secondary);">
-        2단계 인증을 활성화하면 로그인 시 추가 보안 코드가 필요합니다.
-      </p>
-      <div style="padding: 16px; background: var(--bg-secondary); border-radius: 4px; text-align: center;">
-        <i class="fas fa-shield-alt" style="font-size: 48px; color: var(--primary); margin-bottom: 12px;"></i>
-        <p style="font-weight: 500;">2FA ${state.user?.two_factor_enabled ? '활성화됨' : '비활성화됨'}</p>
-      </div>
-    `, [
-      { label: '닫기', onclick: 'closeModal()' },
-      { label: state.user?.two_factor_enabled ? '비활성화' : '활성화', primary: true, onclick: 'toggle2FA()' }
-    ]);
+    if (state.user?.two_factor_enabled) {
+      // 이미 활성화된 경우 - 관리 화면
+      showModal('2단계 인증 관리', `
+        <div style="text-align: center; padding: 20px 0;">
+          <div style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, var(--success), #059669); margin: 0 auto 16px; display: flex; align-items: center; justify-content: center;">
+            <i class="fas fa-shield-alt" style="font-size: 36px; color: white;"></i>
+          </div>
+          <h3 style="margin: 0 0 8px 0; color: var(--success);">2단계 인증 활성화됨</h3>
+          <p style="color: var(--text-muted); font-size: 14px;">계정이 추가 보안으로 보호되고 있습니다.</p>
+        </div>
+        
+        <div style="background: var(--bg-secondary); border-radius: 8px; padding: 16px; margin-top: 16px;">
+          <h4 style="margin: 0 0 12px 0; font-size: 14px;"><i class="fas fa-key"></i> 백업 코드</h4>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+            휴대폰을 분실했을 때 사용할 수 있는 일회용 코드입니다.
+          </p>
+          <button class="btn btn-secondary btn-sm" onclick="regenerateBackupCodes()">
+            <i class="fas fa-sync-alt"></i> 백업 코드 재생성
+          </button>
+        </div>
+        
+        <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-light);">
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+            2단계 인증을 비활성화하려면 비밀번호 확인이 필요합니다.
+          </p>
+          <button class="btn btn-danger btn-sm" onclick="show2FADisableForm()">
+            <i class="fas fa-times"></i> 2단계 인증 비활성화
+          </button>
+        </div>
+      `, [
+        { label: '닫기', onclick: 'closeModal()' }
+      ]);
+    } else {
+      // 비활성화 상태 - 설정 시작
+      showModal('2단계 인증 설정', `
+        <div style="text-align: center; padding: 20px 0;">
+          <div style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--primary-dark)); margin: 0 auto 16px; display: flex; align-items: center; justify-content: center;">
+            <i class="fas fa-shield-alt" style="font-size: 36px; color: white;"></i>
+          </div>
+          <h3 style="margin: 0 0 8px 0;">계정 보안 강화</h3>
+          <p style="color: var(--text-muted); font-size: 14px;">
+            Google Authenticator 또는 호환 앱을 사용하여<br>로그인 시 추가 인증을 요구합니다.
+          </p>
+        </div>
+        
+        <div style="background: var(--bg-secondary); border-radius: 8px; padding: 16px; margin-top: 16px;">
+          <h4 style="margin: 0 0 12px 0; font-size: 14px;"><i class="fas fa-mobile-alt"></i> 필요한 것</h4>
+          <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: var(--text-muted);">
+            <li>Google Authenticator 앱</li>
+            <li>또는 Microsoft Authenticator, Authy 등</li>
+          </ul>
+        </div>
+      `, [
+        { label: '취소', onclick: 'closeModal()' },
+        { label: '설정 시작', primary: true, onclick: 'start2FASetup()' }
+      ]);
+    }
   }
   window.show2FASettings = show2FASettings;
 
-  async function toggle2FA() {
+  // 2FA 설정 시작 - QR 코드 생성
+  async function start2FASetup() {
+    const modalBody = document.querySelector('.modal-body');
+    if (!modalBody) return;
+    
+    modalBody.innerHTML = `
+      <div style="text-align: center; padding: 20px 0;">
+        <div class="spinner" style="margin: 0 auto 16px;"></div>
+        <p>QR 코드를 생성하는 중...</p>
+      </div>
+    `;
+    
     try {
-      if (state.user?.two_factor_enabled) {
-        await api.post('/2fa/disable');
-        state.user.two_factor_enabled = false;
-      } else {
-        await api.post('/2fa/setup');
-        state.user.two_factor_enabled = true;
-      }
-      localStorage.setItem('ecrf_user', JSON.stringify(state.user));
-      closeModal();
-      showToast(`2FA가 ${state.user.two_factor_enabled ? '활성화' : '비활성화'}되었습니다.`, 'success');
+      const response = await api.post('/2fa/setup');
+      const { secret, qrCodeUrl } = response.data;
+      
+      modalBody.innerHTML = `
+        <div id="2fa-setup-step1">
+          <div style="text-align: center;">
+            <h4 style="margin: 0 0 16px 0;"><i class="fas fa-qrcode"></i> 1단계: QR 코드 스캔</h4>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+              Google Authenticator 앱에서 QR 코드를 스캔하세요.
+            </p>
+            <div style="background: white; padding: 16px; border-radius: 8px; display: inline-block; margin-bottom: 16px;">
+              <img src="${qrCodeUrl}" alt="2FA QR Code" style="width: 200px; height: 200px;">
+            </div>
+            <div style="background: var(--bg-secondary); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+              <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">QR 코드를 스캔할 수 없다면 직접 입력:</p>
+              <code style="font-size: 14px; letter-spacing: 2px; font-weight: 600; color: var(--primary); word-break: break-all;">${secret}</code>
+              <button class="btn btn-ghost btn-sm" onclick="copyToClipboard('${secret}')" style="margin-left: 8px;">
+                <i class="fas fa-copy"></i>
+              </button>
+            </div>
+          </div>
+          
+          <div style="margin-top: 24px;">
+            <h4 style="margin: 0 0 12px 0;"><i class="fas fa-keyboard"></i> 2단계: 인증 코드 입력</h4>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+              앱에 표시된 6자리 코드를 입력하세요.
+            </p>
+            <div style="display: flex; gap: 8px; justify-content: center; margin-bottom: 16px;">
+              <input type="text" id="2fa-verify-code" class="form-input" 
+                     maxlength="6" 
+                     placeholder="000000" 
+                     style="width: 150px; text-align: center; font-size: 24px; letter-spacing: 8px; font-family: monospace;"
+                     oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+            </div>
+            <div id="2fa-verify-error" class="hidden" style="color: var(--danger); font-size: 13px; text-align: center; margin-bottom: 12px;"></div>
+            <div style="display: flex; gap: 12px; justify-content: center;">
+              <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+              <button class="btn btn-primary" onclick="verify2FACode()" id="verify-2fa-btn">
+                <i class="fas fa-check"></i> 확인 및 활성화
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      // 코드 입력 필드에 포커스
+      setTimeout(() => {
+        document.getElementById('2fa-verify-code')?.focus();
+      }, 100);
+      
+      // Enter 키로 확인
+      document.getElementById('2fa-verify-code')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') verify2FACode();
+      });
+      
+      // 모달 버튼 숨기기
+      const modalFooter = document.querySelector('.modal-footer');
+      if (modalFooter) modalFooter.style.display = 'none';
+      
     } catch (error) {
-      showToast('2FA 설정 변경에 실패했습니다.', 'error');
+      modalBody.innerHTML = `
+        <div style="text-align: center; padding: 20px 0;">
+          <i class="fas fa-exclamation-circle" style="font-size: 48px; color: var(--danger); margin-bottom: 16px;"></i>
+          <h3>설정 실패</h3>
+          <p style="color: var(--text-muted);">${error.error || '2FA 설정을 시작할 수 없습니다.'}</p>
+        </div>
+      `;
     }
   }
-  window.toggle2FA = toggle2FA;
+  window.start2FASetup = start2FASetup;
+
+  // 2FA 코드 확인 및 활성화
+  async function verify2FACode() {
+    const codeInput = document.getElementById('2fa-verify-code');
+    const errorEl = document.getElementById('2fa-verify-error');
+    const verifyBtn = document.getElementById('verify-2fa-btn');
+    
+    const code = codeInput?.value?.trim();
+    
+    if (!code || code.length !== 6) {
+      if (errorEl) {
+        errorEl.textContent = '6자리 인증 코드를 입력하세요.';
+        errorEl.classList.remove('hidden');
+      }
+      return;
+    }
+    
+    if (verifyBtn) {
+      verifyBtn.disabled = true;
+      verifyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 확인 중...';
+    }
+    
+    try {
+      const response = await api.post('/2fa/verify', { code });
+      
+      // 성공 - 백업 코드 표시
+      const modalBody = document.querySelector('.modal-body');
+      if (modalBody) {
+        const backupCodes = response.data?.backupCodes || [];
+        modalBody.innerHTML = `
+          <div style="text-align: center; padding: 20px 0;">
+            <div style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, var(--success), #059669); margin: 0 auto 16px; display: flex; align-items: center; justify-content: center;">
+              <i class="fas fa-check" style="font-size: 36px; color: white;"></i>
+            </div>
+            <h3 style="margin: 0 0 8px 0; color: var(--success);">2단계 인증 활성화 완료!</h3>
+            <p style="color: var(--text-muted); font-size: 14px;">다음 로그인부터 인증 코드가 필요합니다.</p>
+          </div>
+          
+          <div style="background: var(--warning-light, #FEF3C7); border: 1px solid var(--warning); border-radius: 8px; padding: 16px; margin-top: 16px;">
+            <h4 style="margin: 0 0 12px 0; font-size: 14px; color: var(--warning-dark, #92400E);">
+              <i class="fas fa-exclamation-triangle"></i> 백업 코드를 안전하게 보관하세요!
+            </h4>
+            <p style="font-size: 13px; color: var(--warning-dark, #92400E); margin-bottom: 12px;">
+              휴대폰을 분실했을 때 이 코드로 로그인할 수 있습니다. 각 코드는 한 번만 사용 가능합니다.
+            </p>
+            <div style="background: white; border-radius: 4px; padding: 12px; font-family: monospace; font-size: 14px;">
+              ${backupCodes.map(code => `<div style="padding: 4px 0;">${code}</div>`).join('')}
+            </div>
+            <div style="margin-top: 12px; display: flex; gap: 8px;">
+              <button class="btn btn-secondary btn-sm" onclick="copyBackupCodes()">
+                <i class="fas fa-copy"></i> 복사
+              </button>
+              <button class="btn btn-secondary btn-sm" onclick="downloadBackupCodes()">
+                <i class="fas fa-download"></i> 다운로드
+              </button>
+            </div>
+          </div>
+          
+          <div style="margin-top: 20px; text-align: center;">
+            <button class="btn btn-primary" onclick="closeModal(); loadMyPage();">완료</button>
+          </div>
+        `;
+        
+        // 백업 코드 저장
+        window._backupCodes = backupCodes;
+      }
+      
+      // 상태 업데이트
+      state.user.two_factor_enabled = true;
+      localStorage.setItem('ecrf_user', JSON.stringify(state.user));
+      
+      showToast('2단계 인증이 활성화되었습니다!', 'success');
+      
+    } catch (error) {
+      if (errorEl) {
+        errorEl.textContent = error.error || '잘못된 인증 코드입니다.';
+        errorEl.classList.remove('hidden');
+      }
+      if (verifyBtn) {
+        verifyBtn.disabled = false;
+        verifyBtn.innerHTML = '<i class="fas fa-check"></i> 확인 및 활성화';
+      }
+    }
+  }
+  window.verify2FACode = verify2FACode;
+
+  // 백업 코드 복사
+  function copyBackupCodes() {
+    const codes = window._backupCodes || [];
+    const text = codes.join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('백업 코드가 클립보드에 복사되었습니다.', 'success');
+    }).catch(() => {
+      showToast('복사에 실패했습니다.', 'error');
+    });
+  }
+  window.copyBackupCodes = copyBackupCodes;
+
+  // 백업 코드 다운로드
+  function downloadBackupCodes() {
+    const codes = window._backupCodes || [];
+    const text = `eCRF PWA 2FA 백업 코드\n생성일: ${new Date().toLocaleString()}\n\n${codes.join('\n')}\n\n각 코드는 한 번만 사용 가능합니다.\n이 파일을 안전한 곳에 보관하세요.`;
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ecrf-pwa-backup-codes.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('백업 코드 파일이 다운로드되었습니다.', 'success');
+  }
+  window.downloadBackupCodes = downloadBackupCodes;
+
+  // 2FA 비활성화 폼
+  function show2FADisableForm() {
+    const modalBody = document.querySelector('.modal-body');
+    if (!modalBody) return;
+    
+    modalBody.innerHTML = `
+      <div style="text-align: center; padding: 16px 0;">
+        <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: var(--warning); margin-bottom: 16px;"></i>
+        <h3 style="margin: 0 0 8px 0;">2단계 인증 비활성화</h3>
+        <p style="color: var(--text-muted); font-size: 14px;">
+          비활성화하면 계정 보안이 약해질 수 있습니다.
+        </p>
+      </div>
+      
+      <form id="disable-2fa-form" style="margin-top: 16px;">
+        <div class="form-group">
+          <label class="form-label">비밀번호 확인</label>
+          <input type="password" class="form-input" id="disable-2fa-password" required placeholder="현재 비밀번호 입력">
+        </div>
+        <div class="form-group">
+          <label class="form-label">인증 코드 (선택)</label>
+          <input type="text" class="form-input" id="disable-2fa-code" maxlength="6" placeholder="앱의 6자리 코드">
+        </div>
+        <div id="disable-2fa-error" class="hidden" style="color: var(--danger); font-size: 13px; margin-bottom: 12px;"></div>
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 16px;">
+          <button type="button" class="btn btn-secondary" onclick="show2FASettings()">취소</button>
+          <button type="submit" class="btn btn-danger">
+            <i class="fas fa-times"></i> 비활성화
+          </button>
+        </div>
+      </form>
+    `;
+    
+    // 모달 버튼 숨기기
+    const modalFooter = document.querySelector('.modal-footer');
+    if (modalFooter) modalFooter.style.display = 'none';
+    
+    document.getElementById('disable-2fa-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const password = document.getElementById('disable-2fa-password')?.value;
+      const code = document.getElementById('disable-2fa-code')?.value;
+      const errorEl = document.getElementById('disable-2fa-error');
+      
+      try {
+        await api.post('/2fa/disable', { password, code: code || undefined });
+        
+        state.user.two_factor_enabled = false;
+        localStorage.setItem('ecrf_user', JSON.stringify(state.user));
+        
+        closeModal();
+        showToast('2단계 인증이 비활성화되었습니다.', 'info');
+        
+        // 마이페이지 새로고침
+        if (state.currentView === 'mypage') loadMyPage();
+        
+      } catch (error) {
+        if (errorEl) {
+          errorEl.textContent = error.error || '비활성화에 실패했습니다.';
+          errorEl.classList.remove('hidden');
+        }
+      }
+    });
+  }
+  window.show2FADisableForm = show2FADisableForm;
+
+  // 백업 코드 재생성
+  async function regenerateBackupCodes() {
+    const modalBody = document.querySelector('.modal-body');
+    if (!modalBody) return;
+    
+    modalBody.innerHTML = `
+      <div style="text-align: center; padding: 16px 0;">
+        <h3 style="margin: 0 0 16px 0;">백업 코드 재생성</h3>
+        <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 16px;">
+          새 백업 코드를 생성하면 기존 코드는 모두 무효화됩니다.
+        </p>
+      </div>
+      
+      <form id="regenerate-codes-form">
+        <div class="form-group">
+          <label class="form-label">비밀번호 확인</label>
+          <input type="password" class="form-input" id="regenerate-password" required placeholder="현재 비밀번호 입력">
+        </div>
+        <div id="regenerate-error" class="hidden" style="color: var(--danger); font-size: 13px; margin-bottom: 12px;"></div>
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 16px;">
+          <button type="button" class="btn btn-secondary" onclick="show2FASettings()">취소</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-sync-alt"></i> 재생성
+          </button>
+        </div>
+      </form>
+    `;
+    
+    const modalFooter = document.querySelector('.modal-footer');
+    if (modalFooter) modalFooter.style.display = 'none';
+    
+    document.getElementById('regenerate-codes-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const password = document.getElementById('regenerate-password')?.value;
+      const errorEl = document.getElementById('regenerate-error');
+      
+      try {
+        const response = await api.post('/2fa/backup-codes/regenerate', { password });
+        const backupCodes = response.data?.backupCodes || [];
+        
+        window._backupCodes = backupCodes;
+        
+        modalBody.innerHTML = `
+          <div style="text-align: center; padding: 16px 0;">
+            <i class="fas fa-check-circle" style="font-size: 48px; color: var(--success); margin-bottom: 16px;"></i>
+            <h3 style="margin: 0 0 8px 0;">새 백업 코드 생성 완료</h3>
+          </div>
+          
+          <div style="background: var(--warning-light, #FEF3C7); border: 1px solid var(--warning); border-radius: 8px; padding: 16px; margin-top: 16px;">
+            <p style="font-size: 13px; color: var(--warning-dark, #92400E); margin-bottom: 12px;">
+              이전 백업 코드는 모두 무효화되었습니다. 새 코드를 안전하게 보관하세요.
+            </p>
+            <div style="background: white; border-radius: 4px; padding: 12px; font-family: monospace; font-size: 14px;">
+              ${backupCodes.map(code => `<div style="padding: 4px 0;">${code}</div>`).join('')}
+            </div>
+            <div style="margin-top: 12px; display: flex; gap: 8px;">
+              <button class="btn btn-secondary btn-sm" onclick="copyBackupCodes()">
+                <i class="fas fa-copy"></i> 복사
+              </button>
+              <button class="btn btn-secondary btn-sm" onclick="downloadBackupCodes()">
+                <i class="fas fa-download"></i> 다운로드
+              </button>
+            </div>
+          </div>
+          
+          <div style="margin-top: 20px; text-align: center;">
+            <button class="btn btn-primary" onclick="closeModal()">완료</button>
+          </div>
+        `;
+        
+        showToast('새 백업 코드가 생성되었습니다.', 'success');
+        
+      } catch (error) {
+        if (errorEl) {
+          errorEl.textContent = error.error || '백업 코드 생성에 실패했습니다.';
+          errorEl.classList.remove('hidden');
+        }
+      }
+    });
+  }
+  window.regenerateBackupCodes = regenerateBackupCodes;
+
+  // 클립보드 복사 유틸리티
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('클립보드에 복사되었습니다.', 'success');
+    }).catch(() => {
+      showToast('복사에 실패했습니다.', 'error');
+    });
+  }
+  window.copyToClipboard = copyToClipboard;
 
   // =====================================================
   // GLOBAL SEARCH
