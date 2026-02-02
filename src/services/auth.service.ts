@@ -16,6 +16,8 @@ export interface LoginResult {
   token?: string;
   user?: Omit<User, 'password_hash'>;
   error?: string;
+  requires2FA?: boolean;
+  tempToken?: string; // Temporary token for 2FA verification
 }
 
 export interface TokenPayload {
@@ -29,19 +31,20 @@ export interface TokenPayload {
 }
 
 /**
- * 사용자 로그인
+ * 사용자 로그인 (with 2FA support)
  */
 export async function login(
   db: D1Database,
   email: string,
   password: string,
   ipAddress?: string,
-  userAgent?: string
+  userAgent?: string,
+  twoFactorCode?: string
 ): Promise<LoginResult> {
-  // 사용자 조회
+  // 사용자 조회 (2FA 필드 포함)
   const user = await db.prepare(`
-    SELECT * FROM users WHERE email = ?
-  `).bind(email).first<User>();
+    SELECT *, two_factor_enabled, two_factor_secret FROM users WHERE email = ?
+  `).bind(email).first<User & { two_factor_enabled: number; two_factor_secret: string }>();
 
   if (!user) {
     return { success: false, error: '이메일 또는 비밀번호가 올바르지 않습니다.' };
@@ -101,6 +104,29 @@ export async function login(
     };
   }
 
+  // 2FA 확인 - 활성화되어 있지만 코드가 제공되지 않은 경우
+  if (user.two_factor_enabled && !twoFactorCode) {
+    // 임시 토큰 생성 (2FA 검증용)
+    const tempPayload = {
+      userId: user.id,
+      email: user.email,
+      purpose: '2fa_pending',
+      exp: Math.floor(Date.now() / 1000) + 300 // 5분 유효
+    };
+    const tempToken = btoa(JSON.stringify(tempPayload));
+    
+    // password_hash 제외하고 반환
+    const { password_hash, two_factor_secret, ...userWithoutSensitive } = user;
+    
+    return {
+      success: false,
+      error: '2FA_REQUIRED',
+      requires2FA: true,
+      tempToken,
+      user: userWithoutSensitive as Omit<User, 'password_hash'>
+    };
+  }
+
   // 로그인 성공 - 실패 횟수 초기화
   await db.prepare(`
     UPDATE users SET 
@@ -141,13 +167,13 @@ export async function login(
     role: user.role,
   }, ipAddress, userAgent, sessionId);
 
-  // password_hash 제외하고 반환
-  const { password_hash, ...userWithoutPassword } = user;
+  // password_hash 및 2FA secret 제외하고 반환
+  const { password_hash, two_factor_secret, ...userWithoutSensitive } = user;
 
   return {
     success: true,
     token,
-    user: userWithoutPassword,
+    user: userWithoutSensitive as Omit<User, 'password_hash'>,
   };
 }
 

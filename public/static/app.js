@@ -824,14 +824,34 @@
   window.showConfirm = showConfirm;
 
   // =====================================================
-  // AUTHENTICATION
+  // AUTHENTICATION (with 2FA support)
   // =====================================================
   async function login(email, password, twoFaCode = null) {
     try {
       const payload = { email, password };
-      if (twoFaCode) payload.twoFaCode = twoFaCode;
+      if (twoFaCode) payload.twoFactorCode = twoFaCode;
       
-      const result = await api.post('/auth/login', payload);
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      const result = await response.json();
+      
+      // 2FA 필요
+      if (result.requires2FA || result.error === '2FA_REQUIRED') {
+        // 2FA 정보 임시 저장
+        state._pending2FA = {
+          email,
+          password,
+          tempToken: result.tempToken,
+          user: result.user
+        };
+        
+        // 2FA 코드 입력 섹션 표시
+        throw { error: '2FA_REQUIRED', requires2FA: true };
+      }
       
       if (result.success) {
         state.token = result.data.token;
@@ -839,16 +859,71 @@
         localStorage.setItem('ecrf_token', state.token);
         localStorage.setItem('ecrf_user', JSON.stringify(state.user));
         
+        // Clear pending 2FA
+        delete state._pending2FA;
+        
         updateAuthUI();
         navigateTo('dashboard');
         showToast('로그인 성공', 'success');
         return true;
       }
-      return false;
+      
+      throw { error: result.error || '로그인에 실패했습니다.' };
     } catch (error) {
       throw error;
     }
   }
+  
+  // 2FA 코드로 로그인 완료
+  async function complete2FALogin(twoFaCode) {
+    if (!state._pending2FA) {
+      throw { error: '2FA 세션이 만료되었습니다. 다시 로그인해주세요.' };
+    }
+    
+    const { email, password } = state._pending2FA;
+    
+    try {
+      // 2FA 코드와 함께 다시 로그인 시도
+      const payload = { email, password, twoFactorCode: twoFaCode };
+      
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        state.token = result.data.token;
+        state.user = result.data.user;
+        localStorage.setItem('ecrf_token', state.token);
+        localStorage.setItem('ecrf_user', JSON.stringify(state.user));
+        
+        // Clear pending 2FA
+        delete state._pending2FA;
+        
+        updateAuthUI();
+        navigateTo('dashboard');
+        showToast('로그인 성공', 'success');
+        
+        // 백업 코드 사용 경고
+        if (result.data?.backupCodeUsed) {
+          setTimeout(() => {
+            showToast(`백업 코드 사용됨. 남은 코드: ${result.data.remainingBackupCodes}개`, 'warning');
+          }, 1000);
+        }
+        
+        return true;
+      }
+      
+      throw { error: result.error || '2FA 인증에 실패했습니다.' };
+    } catch (error) {
+      // 에러 시에도 pending 2FA 유지 (재시도 가능)
+      throw error;
+    }
+  }
+  window.complete2FALogin = complete2FALogin;
 
   async function logout(callApi = true) {
     if (callApi && state.token) {
@@ -7375,23 +7450,76 @@
         const twoFaCode = document.getElementById('login-2fa-code')?.value;
         
         const errorEl = document.getElementById('login-error');
+        const submitBtn = loginForm.querySelector('button[type="submit"]');
+        
         if (errorEl) errorEl.classList.add('hidden');
 
         try {
-          await login(email, password, twoFaCode || null);
+          // 버튼 비활성화
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 로그인 중...';
+          }
+          
+          // 2FA 코드가 있으면 2FA 로그인 완료 시도
+          if (twoFaCode && state._pending2FA) {
+            await complete2FALogin(twoFaCode);
+          } else {
+            await login(email, password, twoFaCode || null);
+          }
         } catch (error) {
-          if (error.error === '2FA_REQUIRED') {
+          if (error.error === '2FA_REQUIRED' || error.requires2FA) {
+            // 2FA 섹션 표시
             ui.show('#login-2fa-section');
-            document.getElementById('login-2fa-code')?.focus();
+            const codeInput = document.getElementById('login-2fa-code');
+            if (codeInput) {
+              codeInput.value = '';
+              codeInput.focus();
+            }
+            
+            // 로그인 버튼 텍스트 변경
+            if (submitBtn) {
+              submitBtn.innerHTML = '<i class="fas fa-shield-alt"></i> 2FA 인증';
+            }
+            
             showToast('2FA 코드를 입력해주세요.', 'info');
           } else {
             if (errorEl) {
               errorEl.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${error.error || '로그인에 실패했습니다.'}`;
               errorEl.classList.remove('hidden');
             }
+            
+            // 2FA 에러 시 입력 필드 초기화
+            const codeInput = document.getElementById('login-2fa-code');
+            if (codeInput && codeInput.value) {
+              codeInput.value = '';
+              codeInput.focus();
+            }
+          }
+        } finally {
+          // 버튼 복원 (2FA 모드가 아닌 경우)
+          if (submitBtn && !state._pending2FA) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> 로그인';
+          } else if (submitBtn) {
+            submitBtn.disabled = false;
           }
         }
       });
+      
+      // 2FA 코드 입력 시 자동 제출 (6자리 입력 완료 시)
+      const twoFaInput = document.getElementById('login-2fa-code');
+      if (twoFaInput) {
+        twoFaInput.addEventListener('input', (e) => {
+          const value = e.target.value.replace(/\D/g, '');
+          e.target.value = value;
+          
+          if (value.length === 6 && state._pending2FA) {
+            // 자동 제출
+            loginForm.dispatchEvent(new Event('submit'));
+          }
+        });
+      }
     }
 
     updateAuthUI();

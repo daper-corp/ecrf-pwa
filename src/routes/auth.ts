@@ -11,12 +11,12 @@ const auth = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 /**
  * POST /api/auth/login
- * 로그인
+ * 로그인 (with 2FA support)
  */
 auth.post('/login', async (c) => {
   try {
     const body = await c.req.json();
-    let { email, password } = body;
+    let { email, password, twoFactorCode } = body;
 
     if (!email || !password) {
       return c.json({ success: false, error: '이메일과 비밀번호를 입력해주세요.' }, 400);
@@ -26,7 +26,70 @@ auth.post('/login', async (c) => {
     email = String(email).trim().toLowerCase();
 
     const { ipAddress, userAgent } = getClientInfo(c);
-    const result = await login(c.env.DB, email, password, ipAddress ?? undefined, userAgent ?? undefined);
+    
+    // 2FA 코드가 있으면 먼저 검증
+    if (twoFactorCode) {
+      // 먼저 사용자 정보 조회
+      const user = await c.env.DB.prepare(`
+        SELECT id, two_factor_enabled FROM users WHERE email = ?
+      `).bind(email).first<{ id: string; two_factor_enabled: number }>();
+      
+      if (user?.two_factor_enabled) {
+        // 2FA 검증 API 호출
+        const { verifyTOTP, decryptSecret, getEncryptionKey } = await import('./twofa');
+        
+        const userResult = await c.env.DB.prepare(`
+          SELECT two_factor_secret, two_factor_last_used_timestep FROM users WHERE id = ?
+        `).bind(user.id).first<{ two_factor_secret: string; two_factor_last_used_timestep: number | null }>();
+        
+        if (userResult?.two_factor_secret) {
+          try {
+            const encryptionKey = getEncryptionKey(c.env);
+            const secret = await decryptSecret(userResult.two_factor_secret, encryptionKey);
+            const verification = await verifyTOTP(secret, twoFactorCode);
+            
+            if (!verification.valid) {
+              return c.json({ success: false, error: '잘못된 2FA 코드입니다.' }, 401);
+            }
+            
+            // Check for code reuse
+            if (verification.timeStep === userResult.two_factor_last_used_timestep) {
+              return c.json({ 
+                success: false, 
+                error: '이 코드는 이미 사용되었습니다. 새 코드를 기다려주세요.' 
+              }, 401);
+            }
+            
+            // Record code usage
+            await c.env.DB.prepare(`
+              UPDATE users SET two_factor_last_used_timestep = ? WHERE id = ?
+            `).bind(verification.timeStep, user.id).run();
+            
+          } catch (error) {
+            console.error('2FA verification error:', error);
+            return c.json({ success: false, error: '2FA 검증 중 오류가 발생했습니다.' }, 500);
+          }
+        }
+      }
+    }
+    
+    const result = await login(c.env.DB, email, password, ipAddress ?? undefined, userAgent ?? undefined, twoFactorCode);
+
+    // 2FA 필요
+    if (result.requires2FA) {
+      return c.json({
+        success: false,
+        error: '2FA_REQUIRED',
+        requires2FA: true,
+        tempToken: result.tempToken,
+        user: result.user ? {
+          id: result.user.id,
+          name: result.user.name,
+          email: result.user.email,
+          two_factor_enabled: true
+        } : undefined
+      }, 200); // 200 status for 2FA requirement (not an error)
+    }
 
     if (!result.success) {
       return c.json({ success: false, error: result.error }, 401);
